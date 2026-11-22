@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#F5F6F7] text-[#18212B] antialiased font-sans m-0 p-0 overflow-x-hidden;
+  }
+}
+
+/* Custom scrollbar for clean minimal aesthetic */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #F5F6F7;
+}
+::-webkit-scrollbar-thumb {
+  background: #E5E9ED;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #718096;
+}
+
+/* MapLibre popup clean light theme styling */
+.maplibregl-popup-content {
+  background: #FFFFFF !important;
+  color: #18212B !important;
+  border: 1px solid #E5E9ED !important;
+  border-radius: 6px !important;
+  padding: 8px 10px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+.maplibregl-popup-tip {
+  border-top-color: #FFFFFF !important;
+}

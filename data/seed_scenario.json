@@ -1,0 +1,232 @@
+{
+  "scenario_name": "Mysuru Flood Crisis 2026",
+  "disclaimer": "SIMULATION | NOT LIVE EMERGENCY DATA",
+  "center": [12.2958, 76.6394],
+  "zoom": 13,
+  "hospitals": [
+    {
+      "id": "HOSP-01",
+      "name": "K.R. Hospital (Govt Medical College)",
+      "latitude": 12.3168,
+      "longitude": 76.6496,
+      "total_beds": 350,
+      "available_beds": 42,
+      "icu_capacity": 18,
+      "emergency_capacity": 25,
+      "available_medical_personnel": 14,
+      "operational_status": "Operational"
+    },
+    {
+      "id": "HOSP-02",
+      "name": "Apollo BGS Hospitals",
+      "latitude": 12.2891,
+      "longitude": 76.6234,
+      "total_beds": 200,
+      "available_beds": 15,
+      "icu_capacity": 6,
+      "emergency_capacity": 10,
+      "available_medical_personnel": 9,
+      "operational_status": "Operational"
+    },
+    {
+      "id": "HOSP-03",
+      "name": "Cauvery Multi Speciality Hospital",
+      "latitude": 12.3274,
+      "longitude": 76.6190,
+      "total_beds": 120,
+      "available_beds": 8,
+      "icu_capacity": 2,
+      "emergency_capacity": 5,
+      "available_medical_personnel": 4,
+      "operational_status": "Limited capacity"
+    },
+    {
+      "id": "HOSP-04",
+      "name": "Columbia Asia Hospital (Manipal)",
+      "latitude": 12.3482,
+      "longitude": 76.6575,
+      "total_beds": 180,
+      "available_beds": 28,
+      "icu_capacity": 12,
+      "emergency_capacity": 15,
+      "available_medical_personnel": 11,
+      "operational_status": "Operational"
+    }
+  ],
+  "resources": [
+    {
+      "id": "R-01",
+      "name": "SDRF Water Rescue Alpha",
+      "type": "Boat Team",
+      "latitude": 12.3150,
+      "longitude": 76.6510,
+      "capabilities": ["water_rescue", "evacuation", "first_aid"],
+      "status": "Available",
+      "capacity": 8,
+      "current_assignment_id": null
+    },
+    {
+      "id": "R-02",
+      "name": "NDRF Quick Response Unit 4",
+      "type": "Rescue Team",
+      "latitude": 12.3020,
+      "longitude": 76.6350,
+      "capabilities": ["debris_clearance", "structural_extrication", "first_aid", "evacuation"],
+      "status": "Available",
+      "capacity": 6,
+      "current_assignment_id": null
+    },
+    {
+      "id": "R-03",
+      "name": "Jeeva 108 ALS Ambulance 07",
+      "type": "Ambulance",
+      "latitude": 12.3170,
+      "longitude": 76.6480,
+      "capabilities": ["medical_trauma", "critical_transport", "first_aid"],
+      "status": "Available",
+      "capacity": 2,
+      "current_assignment_id": null
+    },
+    {
+      "id": "R-04",
+      "name": "Civil Defense Inflatable Boat Bravo",
+      "type": "Boat Team",
+      "latitude": 12.2850,
+      "longitude": 76.6420,
+      "capabilities": ["water_rescue", "evacuation"],
+      "status": "Available",
+      "capacity": 5,
+      "current_assignment_id": null
+    },
+    {
+      "id": "R-05",
+      "name": "Red Cross Emergency Medical Team 2",
+      "type": "Medical Unit",
+      "latitude": 12.3350,
+      "longitude": 76.6300,
+      "capabilities": ["triage", "medical_trauma", "first_aid"],
+      "status": "Available",
+      "capacity": 4,
+      "current_assignment_id": null
+    }
+  ],
+  "incidents": [
+    {
+      "id": "INC-101",
+      "type": "Flooding",
+      "description": "Flash water inundation in low-lying residential homes. Water level at 4.5 feet.",
+      "latitude": 12.2825,
+      "longitude": 76.6465,
+      "severity": 4,
+      "urgency": 4,
+      "confidence": 0.95,
+      "affected_population": 12,
+      "vulnerability": 4,
+      "status": "Active",
+      "source": "Citizen SOS",
+      "required_capabilities": ["water_rescue", "evacuation"]
+    },
+    {
+      "id": "INC-102",
+      "type": "Trapped People",
+      "description": "Family of 4 trapped on terrace following ground floor wall collapse near Kukkarahalli feeder canal.",
+      "latitude": 12.3080,
+      "longitude": 76.6310,
+      "severity": 5,
+      "urgency": 5,
+      "confidence": 0.90,
+      "affected_population": 4,
+      "vulnerability": 5,
+      "status": "Active",
+      "source": "Citizen SOS",
+      "required_capabilities": ["structural_extrication", "water_rescue"]
+    },
+    {
+      "id": "INC-103",
+      "type": "Medical Emergency",
+      "description": "Elderly patient with acute respiratory distress cut off by waterlogged road.",
+      "latitude": 12.3210,
+      "longitude": 76.6410,
+      "severity": 4,
+      "urgency": 5,
+      "confidence": 0.98,
+      "affected_population": 1,
+      "vulnerability": 5,
+      "status": "Active",
+      "source": "Citizen App",
+      "required_capabilities": ["medical_trauma", "critical_transport"]
+    },
+    {
+      "id": "INC-104",
+      "type": "Road Blockage",
+      "description": "Submerged culvert and fallen banyan tree completely obstructing Sayyaji Rao Road branch.",
+      "latitude": 12.3120,
+      "longitude": 76.6530,
+      "severity": 3,
+      "urgency": 3,
+      "confidence": 0.85,
+      "affected_population": 0,
+      "vulnerability": 2,
+      "status": "Active",
+      "source": "Traffic Police Field Report",
+      "required_capabilities": ["debris_clearance"]
+    }
+  ],
+  "road_blockages": [
+    {
+      "id": "BLK-01",
+      "road_id": "ROAD-SAYYAJI-NORTH",
+      "latitude": 12.3120,
+      "longitude": 76.6530,
+      "reason": "Uprooted tree and 1.2m flood water",
+      "status": "Active",
+      "avoid_radius_km": 0.35
+    }
+  ],
+  "hazards": [
+    {
+      "id": "HAZ-01",
+      "name": "Kukkarahalli Lake Overflow Zone",
+      "type": "Flood Inundation",
+      "risk_level": "High",
+      "coordinates": [
+        [76.6260, 12.3040],
+        [76.6340, 12.3090],
+        [76.6380, 12.3020],
+        [76.6320, 12.2980],
+        [76.6260, 12.3040]
+      ]
+    },
+    {
+      "id": "HAZ-02",
+      "name": "Chamundi Foothills Water Runoff Basin",
+      "type": "Mudflow & Flash Flood",
+      "risk_level": "Extreme",
+      "coordinates": [
+        [76.6600, 12.2850],
+        [76.6780, 12.2900],
+        [76.6800, 12.2750],
+        [76.6620, 12.2700],
+        [76.6600, 12.2850]
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "ALT-01",
+      "title": "FLASH FLOOD WARNING: Kukkarahalli & Saraswathipuram",
+      "description": "Water level surging along canal buffers. Evacuate basement and ground-level residences immediately.",
+      "severity": "Critical",
+      "target": "All Citizens",
+      "created_at": "2026-11-22T08:15:00Z"
+    },
+    {
+      "id": "ALT-02",
+      "title": "ROAD ADVISORY: Sayyaji Rao North Segment Closed",
+      "description": "Blockage at junction 4. Responders rerouted via Irwin Road corridor.",
+      "severity": "Warning",
+      "target": "Responders & Public",
+      "created_at": "2026-11-22T08:20:00Z"
+    }
+  ]
+}
