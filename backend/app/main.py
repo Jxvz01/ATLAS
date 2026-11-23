@@ -16,12 +16,16 @@ from app.engine import (
     run_global_recomputation, DEFAULT_WEIGHTS
 )
 from app.geospatial import generate_safe_route
+from app.api.v1.router import router as v1_router
 
 app = FastAPI(
     title="ATLAS Intelligence Engine API",
     description="Disaster intelligence and adaptive response coordination backend.",
     version="1.0.0"
 )
+
+# Mount Version 1 Modular Incident Engine & Architecture
+app.include_router(v1_router)
 
 # Enable CORS for frontend Vite development
 app.add_middleware(
