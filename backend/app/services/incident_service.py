@@ -31,8 +31,12 @@ class IncidentService:
 
         # Generate unique incident ID
         existing_all, total_count = self.store.list_incidents(limit=1000)
+        existing_ids = {i.id for i in existing_all}
         new_inc_num = total_count + 101
         inc_id = f"INC-{new_inc_num}"
+        while inc_id in existing_ids or self.store.get_incident(inc_id) is not None:
+            new_inc_num += 1
+            inc_id = f"INC-{new_inc_num}"
 
         # Assign category from type
         category = self._derive_category(report.emergency_type)

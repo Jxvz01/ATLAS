@@ -79,6 +79,18 @@ export const api = {
     return res.data;
   },
 
+  submitFieldReport: async (data: {
+    incident_id: string;
+    resource_id: string;
+    casualties: number;
+    assessment: string;
+    road_condition?: string;
+    notes?: string;
+  }) => {
+    const res = await axios.post(`${API_BASE}/field-reports`, data);
+    return res.data;
+  },
+
   // Simulation Controls
   simNewIncident: async () => {
     const res = await axios.post(`${API_BASE}/simulation/new-incident`);

@@ -142,8 +142,10 @@ class StateStore:
             self.resources[r["id"]] = Resource(**r)
 
         # Load incidents
+        seed_incident_ids = set()
         for inc in self.seed_raw.get("incidents", []):
             self.incidents[inc["id"]] = Incident(**inc)
+            seed_incident_ids.add(inc["id"])
 
         # Load blockages
         for b in self.seed_raw.get("road_blockages", []):
@@ -157,6 +159,52 @@ class StateStore:
 
         # Initial log
         self.log_event("SYSTEM_RESET", "Operational scenario reset to baseline state (Mysuru Flood Scenario).")
+        
+        # Hydrate from SQLite Persistent Operational Store (excluding non-seed transient testing incidents)
+        self.sync_from_sqlite(exclude_non_seed=True, seed_ids=seed_incident_ids)
+
+    def sync_from_sqlite(self, exclude_non_seed: bool = False, seed_ids: set = None):
+        """Loads and syncs persistent incidents from SQLiteOperationalStore into operational StateStore."""
+        try:
+            from app.db.sqlite_store import db_store
+            with db_store.get_connection() as conn:
+                rows = conn.execute("SELECT * FROM incidents ORDER BY created_at ASC;").fetchall()
+                for r in rows:
+                    inc_id = r["id"]
+                    if exclude_non_seed and seed_ids and inc_id not in seed_ids:
+                        continue
+                    status_raw = r["status"]
+                    # Map v1 IncidentStatus enum to UI friendly status
+                    ui_status = "Active"
+                    if status_raw in ["RESOLVED", "CLOSED"]:
+                        ui_status = "Resolved"
+                    elif status_raw in ["ACTIVE", "VERIFIED", "UNDER_REVIEW", "RECEIVED"]:
+                        ui_status = "Active"
+                    elif status_raw in ["RESPONSE_IN_PROGRESS", "ON_SCENE"]:
+                        ui_status = "In Progress"
+
+                    self.incidents[inc_id] = Incident(
+                        id=inc_id,
+                        type=r["type"],
+                        description=r["description"],
+                        latitude=r["latitude"],
+                        longitude=r["longitude"],
+                        severity=r["severity"],
+                        urgency=r["urgency"],
+                        confidence=r["confidence"],
+                        affected_population=r["people_affected"],
+                        vulnerability=3,
+                        priority_score=r["priority_score"],
+                        priority_level=r["priority_level"],
+                        status=ui_status,
+                        source=r["source"],
+                        required_capabilities=json.loads(r["required_capabilities"] or "[]"),
+                        created_at=r["created_at"],
+                        updated_at=r["updated_at"]
+                    )
+        except Exception as e:
+            # Fallback if SQLite store table not ready yet
+            pass
 
     def log_event(self, event_type: str, message: str, entity_id: Optional[str] = None):
         log_id = f"LOG-{len(self.activity_logs) + 1:04d}"

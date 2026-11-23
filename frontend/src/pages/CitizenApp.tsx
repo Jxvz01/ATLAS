@@ -56,6 +56,7 @@ export const CitizenApp: React.FC = () => {
   
   // Active / Submitted incident tracking
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [activeIncidentId, setActiveIncidentId] = useState<string>('INC-1043');
   const [activeTrackingData, setActiveTrackingData] = useState<{
     id: string;
@@ -112,6 +113,7 @@ export const CitizenApp: React.FC = () => {
   // Submit SOS to real backend
   const handleFinalSOSSubmit = async () => {
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       const additionalNotes = [
         situationDetails,
@@ -127,28 +129,31 @@ export const CitizenApp: React.FC = () => {
         affected_population: peopleAffected
       });
 
-      const newId = res?.id || 'INC-1043';
+      if (!res || !res.id) {
+        throw new Error("Invalid incident response returned from ATLAS SEOC.");
+      }
+
+      const newId = res.id;
       setActiveIncidentId(newId);
       setActiveTrackingData({
         id: newId,
-        type: selectedEmergency,
+        type: res.type || selectedEmergency,
         location: locationName,
         eta: '~ 7 min',
-        team: 'R-04 (Water Rescue)',
-        status: 'En Route',
+        team: 'Dispatched to Response Grid',
+        status: 'Request Received',
         timeline: [
-          { step: 'Request Received', time: '18:01', done: true },
-          { step: 'Rescue Team Assigned', time: '18:03', done: true },
-          { step: 'En Route', time: '18:05', done: true, active: true },
+          { step: 'Request Received', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), done: true, active: true },
+          { step: 'Rescue Team Assigned', time: '--', done: false },
+          { step: 'En Route', time: '--', done: false },
           { step: 'On Site', time: '--', done: false }
         ]
       });
 
       setCurrentView('sos_submitted');
-    } catch (e) {
-      // Graceful fallback to verified prototype incident
-      setActiveIncidentId('INC-1043');
-      setCurrentView('sos_submitted');
+    } catch (e: any) {
+      console.error("SOS submission error:", e);
+      setSubmitError(e?.message || 'Emergency transmission failed. Please retry or contact emergency services directly.');
     } finally {
       setIsSubmitting(false);
     }
@@ -662,6 +667,16 @@ export const CitizenApp: React.FC = () => {
                     <span>Elderly / Person with disability</span>
                   </label>
                 </div>
+                {/* Submission Error Banner if any */}
+                {submitError && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl text-left text-xs text-red-700 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">Transmission Failed</div>
+                      <div className="text-[11px] mt-0.5">{submitError}</div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Submit SOS Action */}

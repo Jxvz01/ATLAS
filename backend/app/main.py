@@ -158,6 +158,50 @@ def create_incident(req: CreateIncidentRequest):
     )
     db.incidents[inc_id] = inc
     db.log_event("NEW_INCIDENT", f"New {level} priority incident {inc_id} reported ({req.type}) at ({req.latitude:.4f}, {req.longitude:.4f}).", inc_id)
+    
+    # Mirror into SQLite persistent operational store
+    try:
+        from app.db.sqlite_store import db_store
+        from app.domain.models import IncidentRecord
+        from app.domain.enums import IncidentType, IncidentCategory, IncidentStatus, VerificationStatus, PriorityLevel, ReportSource
+        
+        # Match or fallback to controlled enums
+        type_enum = IncidentType.FLOODING
+        for it in IncidentType:
+            if it.value.lower() == req.type.lower() or it.name.lower() == req.type.lower():
+                type_enum = it
+                break
+
+        prio_enum = PriorityLevel.MEDIUM
+        for p in PriorityLevel:
+            if p.value.lower() == level.lower():
+                prio_enum = p
+                break
+
+        inc_record = IncidentRecord(
+            id=inc_id,
+            type=type_enum,
+            category=IncidentCategory.NATURAL_DISASTER,
+            severity=req.severity,
+            urgency=req.urgency,
+            confidence=0.95,
+            priority_score=min(5.0, max(0.0, score)),
+            priority_level=prio_enum,
+            status=IncidentStatus.ACTIVE,
+            verification_status=VerificationStatus.REPORTED,
+            latitude=req.latitude,
+            longitude=req.longitude,
+            location_description=f"Lat {req.latitude:.4f}, Lon {req.longitude:.4f}",
+            source=ReportSource.CIVILIAN_SOS,
+            people_affected=req.affected_population,
+            casualties=0,
+            description=req.description,
+            required_capabilities=req.required_capabilities or []
+        )
+        db_store.insert_incident(inc_record)
+    except Exception as e:
+        print(f"Warning: SQLite persistence failed for {inc_id}: {e}")
+
     return inc
 
 @app.get("/api/incidents/{incident_id}")
@@ -504,6 +548,64 @@ def sim_restore_road():
 def sim_reset_scenario():
     db.reset_scenario()
     return {"message": "Scenario successfully reset to original seed state"}
+
+# --- Field Reports Endpoints ---
+
+class CreateFieldReportRequest(BaseModel):
+    incident_id: str
+    resource_id: str
+    casualties: int = 0
+    assessment: str
+    road_condition: Optional[str] = None
+    notes: Optional[str] = None
+
+@app.post("/api/field-reports")
+def submit_field_report(req: CreateFieldReportRequest):
+    if req.incident_id not in db.incidents:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    
+    inc = db.incidents[req.incident_id]
+    res = db.resources.get(req.resource_id)
+    res_name = res.name if res else req.resource_id
+
+    # Update incident live casualty count and notes
+    if req.casualties > 0:
+        inc.affected_population = max(inc.affected_population, req.casualties)
+        inc.severity = min(5, inc.severity + 1)
+        score, level = calculate_priority_score(inc.dict())
+        inc.priority_score = score
+        inc.priority_level = level
+
+    msg = f"FIELD REPORT [{res_name}]: {req.assessment}. Casualties: {req.casualties}. Condition: {req.road_condition or 'Passable'}. {req.notes or ''}"
+    db.log_event("FIELD_REPORT", msg, req.incident_id)
+
+    # Persist in SQLite
+    try:
+        from app.db.sqlite_store import db_store
+        from app.domain.models import IncidentReport
+        from app.domain.enums import IncidentType, ReportSource, VerificationStatus
+        import uuid
+
+        rep_id = f"FLD-{uuid.uuid4().hex[:8].upper()}"
+        report = IncidentReport(
+            id=rep_id,
+            incident_id=req.incident_id,
+            source=ReportSource.RESCUER_FIELD,
+            reporter_reference=req.resource_id,
+            latitude=inc.latitude,
+            longitude=inc.longitude,
+            location_description=inc.description[:50],
+            emergency_type=IncidentType.FLOODING,
+            description=msg,
+            people_affected=req.casualties,
+            casualties=req.casualties,
+            verification_status=VerificationStatus.VERIFIED
+        )
+        db_store.insert_report(report)
+    except Exception as e:
+        print(f"Warning: Field report SQLite persist failed: {e}")
+
+    return {"status": "received", "incident_id": req.incident_id, "message": msg}
 
 # --- Activity & Alerts Endpoints ---
 
