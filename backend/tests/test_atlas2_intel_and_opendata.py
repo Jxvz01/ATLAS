@@ -71,3 +71,20 @@ def test_open_data_imagery_and_overview():
     assert "earthquakes" in ov
     assert "eonet" in ov
     assert "imagery" in ov
+
+
+def test_gibs_and_eo_browser_endpoints():
+    res_gibs = client.get("/api/open-data/gibs-layers?date=2026-11-20")
+    assert res_gibs.status_code == 200
+    gibs = res_gibs.json()
+    assert gibs["date"] == "2026-11-20"
+    assert len(gibs["layers"]) >= 5
+    assert any(l["id"] == "MODIS_Terra_CorrectedReflectance_Bands721" for l in gibs["layers"])
+
+    res_status = client.get("/api/open-data/eo-status")
+    assert res_status.status_code == 200
+    assert res_status.json()["public_stac_available"] is True
+
+    res_scenes = client.get("/api/open-data/eo-scenes?lat=12.2958&lon=76.6394&max_cloud=100")
+    assert res_scenes.status_code == 200
+    assert "scenes" in res_scenes.json()

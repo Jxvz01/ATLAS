@@ -15,9 +15,13 @@ import {
   Home,
   CloudRain,
   Slash,
-  Navigation
+  Navigation,
+  Globe,
+  Calendar,
+  ExternalLink
 } from 'lucide-react';
 import { useAtlasStore } from '../store/atlasStore';
+import { api } from '../services/api';
 
 interface SatelliteMapViewProps {
   onLocationSelect?: (lat: number, lon: number) => void;
@@ -37,6 +41,28 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
 
   // Base layers: 'satellite' | 'gibs-viirs' | 'street' | 'terrain'
   const [baseLayer, setBaseLayer] = useState<'satellite' | 'gibs-viirs' | 'street' | 'terrain'>('satellite');
+
+  // GEOINT Modes: 'operations' | 'satellite' | 'global' | 'eo'
+  const [geoMode, setGeoMode] = useState<'operations' | 'satellite' | 'global' | 'eo'>('operations');
+
+  // NASA Worldview / GIBS Satellite Mode State
+  const defaultGibsDate = new Date(Date.now() - 2 * 86400 * 1000).toISOString().slice(0, 10);
+  const [gibsDate, setGibsDate] = useState<string>(defaultGibsDate);
+  const [gibsLayerId, setGibsLayerId] = useState<string>('VIIRS_SNPP_CorrectedReflectance_TrueColor');
+  const [gibsOverlayId, setGibsOverlayId] = useState<string>('none');
+  const [gibsCatalog, setGibsCatalog] = useState<any | null>(null);
+  const [gibsLoading, setGibsLoading] = useState(false);
+
+  // EO Browser / Sentinel-2 STAC State
+  const [eoStatus, setEoStatus] = useState<any | null>(null);
+  const [eoScenes, setEoScenes] = useState<any[]>([]);
+  const [eoLoading, setEoLoading] = useState(false);
+  const [eoMaxCloud, setEoMaxCloud] = useState<number>(60);
+  const [eoCompareDateA, setEoCompareDateA] = useState<string>(
+    new Date(Date.now() - 10 * 86400 * 1000).toISOString().slice(0, 10)
+  );
+  const [eoCompareDateB, setEoCompareDateB] = useState<string>(defaultGibsDate);
+  const [eoActiveSlot, setEoActiveSlot] = useState<'A' | 'B'>('B');
 
   // Layer visibility toggles
   const [visibleLayers, setVisibleLayers] = useState({
@@ -101,6 +127,7 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
               `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`
             ],
             tileSize: 256,
+            maxzoom: 9,
             attribution: 'NASA EOSDIS GIBS (VIIRS SNPP Daily)'
           }
         },
@@ -307,6 +334,94 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
   }, []);
 
   // Handle Base Layer switch
+  // Fetch GIBS catalog when date changes in satellite/eo mode
+  useEffect(() => {
+    if (geoMode === 'satellite' || geoMode === 'eo') {
+      setGibsLoading(true);
+      api.getGibsLayers(gibsDate)
+        .then(data => setGibsCatalog(data))
+        .catch(() => {})
+        .finally(() => setGibsLoading(false));
+    }
+  }, [geoMode, gibsDate]);
+
+  // Fetch EO Status & Sentinel-2 STAC scenes in EO mode
+  useEffect(() => {
+    if (geoMode === 'eo') {
+      setEoLoading(true);
+      Promise.all([
+        api.getEoStatus().catch(() => null),
+        api.getEoScenes(12.2958, 76.6394, eoMaxCloud).catch(() => ({ scenes: [] }))
+      ]).then(([st, sc]) => {
+        if (st) setEoStatus(st);
+        setEoScenes(sc?.scenes || []);
+      }).finally(() => setEoLoading(false));
+    }
+  }, [geoMode, eoMaxCloud]);
+
+  // Apply MapLibre style & projection when GEOINT mode or GIBS layer/date changes
+  const applyGibsStyleToMap = (layerId: string, dateStr: string, overlayId: string = 'none') => {
+    const map = mapRef.current;
+    if (!map) return;
+    const isModis = layerId.startsWith('MODIS');
+    const maxZ = 9;
+    const sources: any = {
+      'gibs-base': {
+        type: 'raster',
+        tiles: [
+          `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layerId}/default/${dateStr}/GoogleMapsCompatible_Level${maxZ}/{z}/{y}/{x}.jpg`
+        ],
+        tileSize: 256,
+        maxzoom: maxZ,
+        attribution: 'NASA EOSDIS GIBS'
+      }
+    };
+    const layers: any[] = [
+      { id: 'gibs-base-layer', type: 'raster', source: 'gibs-base', minzoom: 0, maxzoom: 19 }
+    ];
+    if (overlayId !== 'none') {
+      const ovMaxZ = overlayId.includes('IMERG') ? 6 : 8;
+      sources['gibs-overlay'] = {
+        type: 'raster',
+        tiles: [
+          `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${overlayId}/default/${dateStr}/GoogleMapsCompatible_Level${ovMaxZ}/{z}/{y}/{x}.png`
+        ],
+        tileSize: 256,
+        maxzoom: ovMaxZ,
+        attribution: 'NASA EOSDIS GIBS'
+      };
+      layers.push({ id: 'gibs-overlay-layer', type: 'raster', source: 'gibs-overlay', minzoom: 0, maxzoom: 19 });
+    }
+    map.setStyle({ version: 8, sources, layers } as any);
+    if (map.getZoom() > 8.5) {
+      map.flyTo({ center: [76.6394, 12.2958], zoom: 7.5, duration: 500 });
+    }
+  };
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (geoMode === 'satellite') {
+      try { (map as any).setProjection?.({ type: 'mercator' }); } catch {}
+      applyGibsStyleToMap(gibsLayerId, gibsDate, gibsOverlayId);
+    } else if (geoMode === 'eo') {
+      try { (map as any).setProjection?.({ type: 'mercator' }); } catch {}
+      const activeDate = eoActiveSlot === 'A' ? eoCompareDateA : eoCompareDateB;
+      applyGibsStyleToMap('MODIS_Terra_CorrectedReflectance_Bands721', activeDate, 'none');
+    } else if (geoMode === 'global') {
+      map.setStyle(getStyleForBase('satellite') as any);
+      map.once('style.load', () => {
+        try { (map as any).setProjection?.({ type: 'globe' }); } catch {}
+      });
+      try { (map as any).setProjection?.({ type: 'globe' }); } catch {}
+      map.flyTo({ center: [76.6394, 18.0], zoom: 1.8, duration: 700 });
+    } else {
+      try { (map as any).setProjection?.({ type: 'mercator' }); } catch {}
+      map.setStyle(getStyleForBase(baseLayer) as any);
+      map.flyTo({ center: [76.6394, 12.2958], zoom: 13, duration: 600 });
+    }
+  }, [geoMode, gibsLayerId, gibsDate, gibsOverlayId, eoActiveSlot, eoCompareDateA, eoCompareDateB]);
+
   const handleBaseLayerSwitch = (layer: 'satellite' | 'gibs-viirs' | 'street' | 'terrain') => {
     setBaseLayer(layer);
     if (mapRef.current) {
@@ -695,8 +810,8 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
       });
     }
 
-    // 7. External USGS Earthquakes
-    if (visibleLayers.earthquakes && openData?.earthquakes?.events) {
+    // 7. External USGS Earthquakes (shown when toggled or in Global Intelligence mode)
+    if ((visibleLayers.earthquakes || geoMode === 'global') && openData?.earthquakes?.events) {
       openData.earthquakes.events.forEach((eq: any) => {
         if (!eq.latitude || !eq.longitude) return;
         const el = document.createElement('div');
@@ -717,7 +832,29 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
       });
     }
 
-  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts, osmInfrastructure, openData]);
+    // 8. External NASA EONET Global Hazard Events (shown in Global Intelligence mode)
+    if (geoMode === 'global' && openData?.eonet?.events) {
+      openData.eonet.events.forEach((ev: any) => {
+        if (!ev.latitude || !ev.longitude) return;
+        const el = document.createElement('div');
+        el.className = 'cursor-pointer';
+        el.innerHTML = `<div class="w-5 h-5 rounded-full bg-amber-500 border-2 border-white text-white shadow flex items-center justify-center text-[9px] font-bold">★</div>`;
+        const popup = new maplibregl.Popup({ offset: 10, closeButton: false }).setHTML(`
+          <div class="font-sans text-xs bg-white text-[#18212B] p-2 max-w-[210px]">
+            <div class="text-[9px] font-mono uppercase text-amber-700 font-bold">EXTERNAL • NASA EONET</div>
+            <div class="font-bold mt-0.5">${ev.title}</div>
+            <div class="text-[10px] text-[#718096]">${ev.category} • ${ev.date ? ev.date.slice(0, 10) : ''}</div>
+          </div>
+        `);
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([ev.longitude, ev.latitude])
+          .setPopup(popup)
+          .addTo(map);
+        markersRef.current.push(marker);
+      });
+    }
+
+  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts, osmInfrastructure, openData, geoMode]);
 
   const handleRecenter = () => {
     mapRef.current?.flyTo({
@@ -749,6 +886,230 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
     <div className="relative w-full h-full bg-[#F5F6F7] overflow-hidden select-none">
       {/* MapLibre Canvas Container */}
       <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
+
+      {/* TOP-LEFT GEOINT MODE SWITCHER & CONTEXTUAL CONTROLS */}
+      <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 max-w-[330px]">
+        <div className="bg-[#0F172A]/95 backdrop-blur-sm border border-slate-700 rounded-lg p-1 flex items-center gap-1 shadow-md">
+          {([
+            { id: 'operations', label: 'Operations' },
+            { id: 'satellite', label: 'Satellite' },
+            { id: 'global', label: 'Global' },
+            { id: 'eo', label: 'EO Browser' }
+          ] as const).map(m => (
+            <button
+              key={m.id}
+              onClick={() => setGeoMode(m.id)}
+              className={`px-2.5 py-1 rounded text-[11px] font-semibold transition ${
+                geoMode === m.id
+                  ? 'bg-[#E85D2A] text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+
+        {/* SATELLITE INTELLIGENCE PANEL (NASA Worldview / GIBS) */}
+        {geoMode === 'satellite' && (
+          <div className="bg-white/95 backdrop-blur-sm border border-[#DCE2E8] rounded-lg p-3 shadow-lg space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-[#E5E9ED] pb-1.5">
+              <span className="font-bold text-[11px] uppercase tracking-wider text-[#0F172A] font-mono">
+                NASA Worldview / GIBS
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-50 text-[#0284C7] font-semibold">
+                {gibsLoading ? 'Loading...' : 'ORBITAL DAILY'}
+              </span>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-mono uppercase text-[#5B6777] font-bold">Imagery Product</label>
+              <select
+                value={gibsLayerId}
+                onChange={(e) => setGibsLayerId(e.target.value)}
+                className="mt-0.5 w-full p-1.5 rounded border border-[#DCE2E8] bg-[#F8FAFC] text-[11px] font-semibold"
+              >
+                <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor">VIIRS SNPP True Color (375m)</option>
+                <option value="MODIS_Terra_CorrectedReflectance_TrueColor">MODIS Terra True Color (250m)</option>
+                <option value="MODIS_Terra_CorrectedReflectance_Bands721">MODIS Flood & Burn Bands 7-2-1</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5">
+              <div>
+                <label className="text-[10px] font-mono uppercase text-[#5B6777] font-bold">Product Date</label>
+                <input
+                  type="date"
+                  value={gibsDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setGibsDate(e.target.value)}
+                  className="mt-0.5 w-full p-1 rounded border border-[#DCE2E8] bg-[#F8FAFC] text-[11px] font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase text-[#5B6777] font-bold">Hazard Overlay</label>
+                <select
+                  value={gibsOverlayId}
+                  onChange={(e) => setGibsOverlayId(e.target.value)}
+                  className="mt-0.5 w-full p-1.5 rounded border border-[#DCE2E8] bg-[#F8FAFC] text-[10px] font-semibold"
+                >
+                  <option value="none">None</option>
+                  <option value="VIIRS_SNPP_Thermal_Anomalies_375m_All">VIIRS Fire / Thermal</option>
+                  <option value="IMERG_Precipitation_Rate">GPM IMERG Rain Rate</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="text-[10px] text-[#5B6777] leading-snug bg-[#F8FAFC] p-1.5 rounded border border-[#E5E9ED]">
+              {gibsCatalog?.layers?.find((l: any) => l.id === gibsLayerId)?.description || 'Daily satellite reflectance from NASA EOSDIS GIBS (not live video; ~3–5h NRT latency).'}
+            </div>
+          </div>
+        )}
+
+        {/* GLOBAL INTELLIGENCE PANEL (Terra-Watch 3D Globe + EONET + USGS) */}
+        {geoMode === 'global' && (
+          <div className="bg-white/95 backdrop-blur-sm border border-[#DCE2E8] rounded-lg p-3 shadow-lg space-y-2 text-xs">
+            <div className="flex items-center justify-between border-b border-[#E5E9ED] pb-1.5">
+              <span className="font-bold text-[11px] uppercase tracking-wider text-[#0F172A] font-mono flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-[#0284C7]" />
+                <span>Global 3D Hazard Watch</span>
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 font-semibold">
+                EXTERNAL FEEDS
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px] tabular-nums">
+              <div className="p-2 rounded bg-[#F8FAFC] border border-[#E5E9ED]">
+                <div className="text-[9px] font-mono text-[#5B6777]">NASA EONET</div>
+                <div className="font-bold text-amber-600">{openData?.eonet?.count ?? 0} Open Events</div>
+              </div>
+              <div className="p-2 rounded bg-[#F8FAFC] border border-[#E5E9ED]">
+                <div className="text-[9px] font-mono text-[#5B6777]">USGS Seismic</div>
+                <div className="font-bold text-purple-700">{openData?.earthquakes?.count ?? 0} M2.5+ (30d)</div>
+              </div>
+            </div>
+
+            <div className="text-[10px] text-[#5B6777]">
+              External EONET (★) & USGS (M) observations are shown on the 3D globe and are separate from verified ATLAS incidents.
+            </div>
+
+            <button
+              onClick={() => setGeoMode('operations')}
+              className="w-full py-1.5 rounded bg-[#0F172A] hover:bg-[#1E293B] text-white text-[11px] font-semibold transition"
+            >
+              Return to Mysuru Operations →
+            </button>
+          </div>
+        )}
+
+        {/* EARTH OBSERVATION PANEL (EO Browser / Sentinel-2 STAC & Temporal Compare) */}
+        {geoMode === 'eo' && (
+          <div className="bg-white/95 backdrop-blur-sm border border-[#DCE2E8] rounded-lg p-3 shadow-lg space-y-2.5 text-xs max-h-[72vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#E5E9ED] pb-1.5">
+              <span className="font-bold text-[11px] uppercase tracking-wider text-[#0F172A] font-mono">
+                Earth Observation & Compare
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">
+                STAC LIVE
+              </span>
+            </div>
+
+            {eoStatus && !eoStatus.sentinel_hub_oauth_configured && (
+              <div className="p-1.5 rounded bg-amber-50 border border-amber-200 text-[10px] text-amber-900">
+                <b>Sentinel Hub OAuth:</b> Not configured. Using public <b>Element84 Sentinel-2 STAC</b> discovery + <b>NASA GIBS</b> temporal comparison.
+              </div>
+            )}
+
+            {/* Before / After Temporal Compare */}
+            <div className="space-y-1.5 p-2 rounded bg-[#F8FAFC] border border-[#E5E9ED]">
+              <div className="text-[10px] font-mono font-bold uppercase text-[#5B6777]">
+                MODIS Flood/Burn (Bands 7-2-1) Compare
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <div className="text-[9px] text-[#5B6777]">Date A (Before)</div>
+                  <input
+                    type="date"
+                    value={eoCompareDateA}
+                    onChange={(e) => setEoCompareDateA(e.target.value)}
+                    className="w-full p-1 rounded border border-[#DCE2E8] bg-white text-[10px] font-mono"
+                  />
+                  <button
+                    onClick={() => setEoActiveSlot('A')}
+                    className={`mt-1 w-full py-1 rounded text-[10px] font-bold ${
+                      eoActiveSlot === 'A' ? 'bg-[#E85D2A] text-white' : 'bg-white border border-[#DCE2E8] text-[#111827]'
+                    }`}
+                  >
+                    View Date A
+                  </button>
+                </div>
+                <div>
+                  <div className="text-[9px] text-[#5B6777]">Date B (After)</div>
+                  <input
+                    type="date"
+                    value={eoCompareDateB}
+                    onChange={(e) => setEoCompareDateB(e.target.value)}
+                    className="w-full p-1 rounded border border-[#DCE2E8] bg-white text-[10px] font-mono"
+                  />
+                  <button
+                    onClick={() => setEoActiveSlot('B')}
+                    className={`mt-1 w-full py-1 rounded text-[10px] font-bold ${
+                      eoActiveSlot === 'B' ? 'bg-[#E85D2A] text-white' : 'bg-white border border-[#DCE2E8] text-[#111827]'
+                    }`}
+                  >
+                    View Date B
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Sentinel-2 L2A STAC Scene Discovery */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono font-bold uppercase text-[#5B6777]">
+                  Sentinel-2 L2A Scenes (Mysuru)
+                </span>
+                <select
+                  value={eoMaxCloud}
+                  onChange={(e) => setEoMaxCloud(Number(e.target.value))}
+                  className="text-[10px] border border-[#DCE2E8] rounded px-1 py-0.5 bg-white"
+                >
+                  <option value={20}>Cloud ≤ 20%</option>
+                  <option value={60}>Cloud ≤ 60%</option>
+                  <option value={100}>All Cloud %</option>
+                </select>
+              </div>
+
+              {eoLoading ? (
+                <div className="text-[10px] text-[#5B6777] py-2">Querying Element84 STAC...</div>
+              ) : eoScenes.length === 0 ? (
+                <div className="text-[10px] text-[#5B6777] py-2">No Sentinel-2 scenes under {eoMaxCloud}% cloud cover.</div>
+              ) : (
+                <div className="space-y-1 max-h-36 overflow-y-auto">
+                  {eoScenes.map((sc: any) => (
+                    <div key={sc.id} className="p-1.5 rounded border border-[#E5E9ED] bg-white flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-mono font-bold text-[#0F172A] truncate">{sc.date} • {sc.cloud_cover}% cloud</div>
+                        <div className="text-[9px] font-mono text-[#5B6777] truncate">{sc.id}</div>
+                      </div>
+                      <a
+                        href={sc.eo_browser_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2 py-1 rounded bg-[#0284C7] hover:bg-sky-700 text-white text-[9px] font-bold shrink-0 flex items-center gap-1"
+                      >
+                        <span>EO Browser</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* TOP-RIGHT CONTROLS: LAYER SWITCHER, FULLSCREEN, RECENTER, ZOOM */}
       <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
@@ -939,10 +1300,13 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
         </span>
         <span>•</span>
         <span className="font-semibold text-[#18212B]">
-          {baseLayer === 'satellite' && 'Esri Static Imagery (Not Live)'}
-          {baseLayer === 'gibs-viirs' && `NASA GIBS VIIRS (${new Date(Date.now() - 2 * 86400 * 1000).toISOString().slice(0, 10)})`}
-          {baseLayer === 'street' && '© OpenStreetMap contributors'}
-          {baseLayer === 'terrain' && '© OpenTopoMap (CC-BY-SA)'}
+          {geoMode === 'satellite' && `NASA EOSDIS GIBS (${gibsDate})`}
+          {geoMode === 'global' && '3D Globe • NASA EONET + USGS'}
+          {geoMode === 'eo' && `GIBS Bands 7-2-1 (${eoActiveSlot === 'A' ? eoCompareDateA : eoCompareDateB}) • Element84 STAC`}
+          {geoMode === 'operations' && baseLayer === 'satellite' && 'Esri Static Imagery (Not Live)'}
+          {geoMode === 'operations' && baseLayer === 'gibs-viirs' && `NASA GIBS VIIRS (${defaultGibsDate})`}
+          {geoMode === 'operations' && baseLayer === 'street' && '© OpenStreetMap contributors'}
+          {geoMode === 'operations' && baseLayer === 'terrain' && '© OpenTopoMap (CC-BY-SA)'}
         </span>
       </div>
     </div>

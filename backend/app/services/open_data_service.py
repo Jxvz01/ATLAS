@@ -350,3 +350,148 @@ def get_imagery_layers_catalog() -> Dict[str, Any]:
             },
         ],
     }
+
+
+def get_gibs_layers_catalog(date_str: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Curated NASA Worldview / EOSDIS GIBS WMTS EPSG:3857 layers for disaster intelligence.
+    Uses GoogleMapsCompatible tiling compatible with MapLibre GL.
+    """
+    default_date = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+    chosen_date = date_str or default_date
+    return {
+        "date": chosen_date,
+        "default_date": default_date,
+        "fetched_at": _utc_now(),
+        "attribution": "NASA EOSDIS Global Imagery Browse Services (GIBS)",
+        "layers": [
+            {
+                "id": "VIIRS_SNPP_CorrectedReflectance_TrueColor",
+                "name": "VIIRS SNPP True Color",
+                "category": "Natural Color",
+                "is_overlay": False,
+                "max_zoom": 9,
+                "resolution": "250m–375m",
+                "tile_url": f"https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/{chosen_date}/GoogleMapsCompatible_Level9/{{z}}/{{y}}/{{x}}.jpg",
+                "description": "Daily orbital natural-color reflectance (Suomi NPP).",
+            },
+            {
+                "id": "MODIS_Terra_CorrectedReflectance_TrueColor",
+                "name": "MODIS Terra True Color",
+                "category": "Natural Color",
+                "is_overlay": False,
+                "max_zoom": 9,
+                "resolution": "250m",
+                "tile_url": f"https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{chosen_date}/GoogleMapsCompatible_Level9/{{z}}/{{y}}/{{x}}.jpg",
+                "description": "Morning-pass natural-color reflectance (Terra MODIS).",
+            },
+            {
+                "id": "MODIS_Terra_CorrectedReflectance_Bands721",
+                "name": "MODIS Flood & Burn (Bands 7-2-1)",
+                "category": "Flood & Burn",
+                "is_overlay": False,
+                "max_zoom": 9,
+                "resolution": "250m",
+                "tile_url": f"https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_Bands721/default/{chosen_date}/GoogleMapsCompatible_Level9/{{z}}/{{y}}/{{x}}.jpg",
+                "description": "False-color SWIR/NIR: standing floodwater appears dark blue/black, vegetation bright green.",
+            },
+            {
+                "id": "VIIRS_SNPP_Thermal_Anomalies_375m_All",
+                "name": "VIIRS Fire & Thermal Anomalies",
+                "category": "Fire & Smoke",
+                "is_overlay": True,
+                "max_zoom": 8,
+                "resolution": "375m",
+                "tile_url": f"https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_Thermal_Anomalies_375m_All/default/{chosen_date}/GoogleMapsCompatible_Level8/{{z}}/{{y}}/{{x}}.png",
+                "description": "Active fire & thermal anomaly detections overlay.",
+            },
+            {
+                "id": "IMERG_Precipitation_Rate",
+                "name": "GPM IMERG Precipitation Rate",
+                "category": "Atmospheric",
+                "is_overlay": True,
+                "max_zoom": 6,
+                "resolution": "10km",
+                "tile_url": f"https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/IMERG_Precipitation_Rate/default/{chosen_date}/GoogleMapsCompatible_Level6/{{z}}/{{y}}/{{x}}.png",
+                "description": "Global satellite precipitation rate overlay.",
+            },
+        ],
+    }
+
+
+def fetch_sentinel2_stac_scenes(
+    lat: float = DEFAULT_LAT,
+    lon: float = DEFAULT_LON,
+    max_cloud: float = 100.0,
+    limit: int = 6,
+) -> Dict[str, Any]:
+    """
+    Queries Element84 Earth Search public STAC API for real Sentinel-2 L2A scenes.
+    No API key required; returns actual scene metadata, cloud cover, and EO Browser handoff links.
+    """
+    cache_key = f"stac_s2:{lat:.2f}:{lon:.2f}:{max_cloud}:{limit}"
+    cached = _get_cached(cache_key, ttl_seconds=900)
+    if cached:
+        return cached
+
+    url = "https://earth-search.aws.element84.com/v1/search"
+    payload: Dict[str, Any] = {
+        "collections": ["sentinel-2-l2a"],
+        "intersects": {"type": "Point", "coordinates": [lon, lat]},
+        "limit": limit,
+    }
+    if max_cloud < 100.0:
+        payload["query"] = {"eo:cloud_cover": {"lte": max_cloud}}
+
+    try:
+        with httpx.Client(timeout=8.0) as client:
+            resp = client.post(url, json=payload)
+        if resp.status_code == 200:
+            raw = resp.json()
+            scenes = []
+            for feat in raw.get("features", []):
+                props = feat.get("properties", {})
+                assets = feat.get("assets", {})
+                dt = props.get("datetime", "")
+                date_only = dt[:10] if dt else ""
+                thumb = (assets.get("thumbnail") or {}).get("href")
+                eo_url = (
+                    f"https://apps.sentinel-hub.com/eo-browser/?zoom=12&lat={lat}&lng={lon}"
+                    f"&themeId=DEFAULT-THEME&datasetId=S2L2A"
+                    + (f"&fromTime={date_only}T00:00:00.000Z&toTime={date_only}T23:59:59.999Z" if date_only else "")
+                )
+                scenes.append({
+                    "id": feat.get("id"),
+                    "collection": feat.get("collection"),
+                    "datetime": dt,
+                    "date": date_only,
+                    "cloud_cover": round(float(props.get("eo:cloud_cover", 0.0)), 1),
+                    "platform": props.get("platform", "sentinel-2"),
+                    "thumbnail": thumb,
+                    "eo_browser_url": eo_url,
+                })
+            data = {
+                "available": True,
+                "source": "Element84 Earth Search STAC (AWS Open Data Sentinel-2 L2A)",
+                "attribution": "Copernicus Sentinel data (ESA) via Element84 Earth Search",
+                "fetched_at": _utc_now(),
+                "count": len(scenes),
+                "scenes": scenes,
+            }
+            return _set_cached(cache_key, data)
+        return {
+            "available": False,
+            "source": "Element84 Earth Search STAC",
+            "reason": f"HTTP {resp.status_code}",
+            "scenes": [],
+            "fetched_at": _utc_now(),
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "source": "Element84 Earth Search STAC",
+            "reason": f"Request failed: {type(exc).__name__}",
+            "scenes": [],
+            "fetched_at": _utc_now(),
+        }
+

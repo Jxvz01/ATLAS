@@ -276,5 +276,20 @@ export const api = {
   getImageryLayers: async () => {
     const res = await axios.get(`${API_BASE}/open-data/imagery-layers`);
     return res.data;
+  },
+
+  getGibsLayers: async (date?: string) => {
+    const res = await axios.get(`${API_BASE}/open-data/gibs-layers`, { params: date ? { date } : {} });
+    return res.data;
+  },
+
+  getEoScenes: async (lat = 12.2958, lon = 76.6394, maxCloud = 100) => {
+    const res = await axios.get(`${API_BASE}/open-data/eo-scenes`, { params: { lat, lon, max_cloud: maxCloud }, timeout: 12000 });
+    return res.data;
+  },
+
+  getEoStatus: async () => {
+    const res = await axios.get(`${API_BASE}/open-data/eo-status`);
+    return res.data;
   }
 };

@@ -258,3 +258,25 @@ def get_osm_infrastructure():
 @router.get("/open-data/imagery-layers")
 def get_imagery_layers():
     return open_data_service.get_imagery_layers_catalog()
+
+
+@router.get("/open-data/gibs-layers")
+def get_gibs_layers(date: Optional[str] = None):
+    return open_data_service.get_gibs_layers_catalog(date_str=date)
+
+
+@router.get("/open-data/eo-scenes")
+def get_eo_scenes(lat: float = 12.2958, lon: float = 76.6394, max_cloud: float = 100.0):
+    return open_data_service.fetch_sentinel2_stac_scenes(lat=lat, lon=lon, max_cloud=max_cloud)
+
+
+@router.get("/open-data/eo-status")
+def get_eo_status():
+    has_oauth = bool(settings.SENTINEL_HUB_CLIENT_ID and settings.SENTINEL_HUB_CLIENT_SECRET)
+    return {
+        "sentinel_hub_oauth_configured": has_oauth,
+        "public_stac_available": True,
+        "stac_provider": "Element84 Earth Search (Sentinel-2 L2A)",
+        "eo_browser_url": "https://apps.sentinel-hub.com/eo-browser/?zoom=12&lat=12.2958&lng=76.6394&themeId=DEFAULT-THEME",
+        "limitation": None if has_oauth else "Sentinel Hub OAuth credentials not configured; using public Element84 STAC scene discovery, NASA GIBS temporal comparison, and external EO Browser handoff.",
+    }
