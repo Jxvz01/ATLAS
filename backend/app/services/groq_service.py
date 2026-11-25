@@ -31,7 +31,7 @@ def _call_groq(
     messages: List[Dict[str, str]],
     model: Optional[str] = None,
     json_mode: bool = False,
-    max_tokens: int = 700,
+    max_tokens: int = 2048,
 ) -> Dict[str, Any]:
     """
     Calls the Groq Chat Completions API with timeout, retry on 429/5xx,
@@ -83,6 +83,11 @@ def _call_groq(
                     "timestamp": ts,
                     "ai_generated": True,
                 }
+            elif resp.status_code == 400 and "response_format" in payload and attempt == 0:
+                # Fallback if strict json_object validation fails on long reasoning output
+                payload.pop("response_format", None)
+                last_error = f"Groq API returned HTTP 400."
+                continue
             elif resp.status_code == 429:
                 last_error = "Groq API rate limit reached (429)."
                 if attempt == 0:
@@ -216,7 +221,7 @@ def generate_operational_briefing(snapshot: Dict[str, Any]) -> Dict[str, Any]:
         ],
         model=settings.GROQ_MODEL,
         json_mode=True,
-        max_tokens=850,
+        max_tokens=2048,
     )
     if not res["available"]:
         return {**res, "provenance": "ATLAS Live Operational Snapshot (AI Unavailable)"}
