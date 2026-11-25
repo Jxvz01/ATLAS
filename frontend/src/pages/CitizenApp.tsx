@@ -1,28 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Home, 
-  Map as MapIcon, 
-  Bell, 
-  User, 
-  ArrowLeft, 
-  ArrowRight, 
-  Check, 
-  CheckCircle2, 
-  AlertTriangle, 
-  MapPin, 
-  Phone, 
-  Crosshair, 
-  Flame, 
-  Plus, 
-  Minus, 
-  Building2, 
-  ShieldCheck, 
-  Navigation, 
-  Clock, 
-  LifeBuoy, 
-  FileText, 
-  Layers, 
-  Share2, 
+import {
+  Home,
+  Map as MapIcon,
+  Bell,
+  User,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  AlertTriangle,
+  MapPin,
+  Phone,
+  Crosshair,
+  Flame,
+  Plus,
+  Minus,
+  Building2,
+  ShieldCheck,
+  Navigation,
+  Clock,
+  LifeBuoy,
+  FileText,
+  Layers,
+  Share2,
   Info,
   ChevronRight,
   ExternalLink,
@@ -47,13 +47,13 @@ export const CitizenApp: React.FC = () => {
   const [locationName, setLocationName] = useState<string>('Vijayanagar, Mysuru');
   const [locationCoords, setLocationCoords] = useState<[number, number]>([12.3180, 76.6430]);
   const [locationMode, setLocationMode] = useState<'gps' | 'map' | 'manual'>('gps');
-  
+
   // Step 3 Details
   const [peopleAffected, setPeopleAffected] = useState<number>(2);
   const [situationDetails, setSituationDetails] = useState<string>('Water entering our house, we are unable to move.');
   const [hasMedicalHelp, setHasMedicalHelp] = useState<boolean>(false);
   const [hasElderlyOrDisabled, setHasElderlyOrDisabled] = useState<boolean>(true);
-  
+
   // Active / Submitted incident tracking
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -228,17 +228,17 @@ export const CitizenApp: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] flex flex-col items-center justify-center p-0 sm:p-4 font-sans text-[#18212B] select-none">
-      
+
       {/* NATIVE MOBILE CONTAINER (Framed device shell matching modern smartphone) */}
       <div className="w-full max-w-[412px] h-[100dvh] sm:h-[844px] bg-white sm:rounded-[44px] sm:border-[8px] sm:border-[#1E293B] shadow-2xl flex flex-col justify-between overflow-hidden relative">
-        
+
         {/* 1. NATIVE STATUS BAR (18:01, Camera hole-punch, Signal & Battery 95%) */}
         <div className="pt-2 px-6 pb-1 bg-white flex items-center justify-between text-xs font-semibold text-[#18212B] shrink-0 z-30">
           <span className="font-mono text-[13px] tracking-tight">18:01</span>
-          
+
           {/* Subtle selfie camera cutout */}
           <div className="w-3.5 h-3.5 bg-black rounded-full mx-auto" />
-          
+
           <div className="flex items-center gap-1.5 text-[11px] font-mono">
             <span>📶</span>
             <span>95%</span>
@@ -247,13 +247,13 @@ export const CitizenApp: React.FC = () => {
 
         {/* 2. DYNAMIC WORKSPACE (Screens operated inside one unified app) */}
         <div className="flex-1 flex flex-col overflow-y-auto relative">
-          
+
           {/* ============================================================== */}
           {/* SCREEN 1: HOME PAGE (activeTab === 'home' && currentView === 'tab') */}
           {/* ============================================================== */}
           {activeTab === 'home' && currentView === 'tab' && (
             <div className="flex-1 px-5 py-3 flex flex-col justify-between space-y-4">
-              
+
               {/* Brand Header */}
               <div className="flex flex-col items-center text-center pt-1">
                 <div className="w-6 h-6 text-[#FF5A24] mb-0.5">
@@ -281,9 +281,9 @@ export const CitizenApp: React.FC = () => {
                 </div>
 
                 <div className="w-28 h-24 relative flex items-center justify-center shrink-0">
-                  <img 
-                    src="/mysuru-palace-trans.png" 
-                    alt="Mysuru Heritage Landmark" 
+                  <img
+                    src="/mysuru-palace-trans.png"
+                    alt="Mysuru Heritage Landmark"
                     className="w-full h-auto object-contain opacity-90 drop-shadow-xs"
                   />
                 </div>
@@ -382,8 +382,8 @@ export const CitizenApp: React.FC = () => {
               <div>
                 {/* Top Back & Header */}
                 <div className="flex items-center justify-between pb-3">
-                  <button 
-                    onClick={() => setCurrentView('tab')} 
+                  <button
+                    onClick={() => setCurrentView('tab')}
                     className="p-1 -ml-1 text-[#18212B] hover:text-[#FF5A24] transition"
                   >
                     <ArrowLeft className="w-5 h-5" />
@@ -409,21 +409,19 @@ export const CitizenApp: React.FC = () => {
                       <button
                         key={type.id}
                         onClick={() => setSelectedEmergency(type.id)}
-                        className={`w-full p-3 rounded-2xl border flex items-center justify-between transition text-left ${
-                          isSelected
+                        className={`w-full p-3 rounded-2xl border flex items-center justify-between transition text-left ${isSelected
                             ? 'bg-[#FFF2EC] border-[#FF5A24] text-[#FF5A24] shadow-2xs'
                             : 'bg-white border-[#E1E7ED] text-[#18212B] hover:bg-[#F8FAFC]'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <span className="text-lg">{type.icon}</span>
                           <span className="text-sm font-bold">{type.label}</span>
                         </div>
-                        
+
                         {/* Radio selection circle */}
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          isSelected ? 'border-[#FF5A24]' : 'border-[#CBD5E1]'
-                        }`}>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-[#FF5A24]' : 'border-[#CBD5E1]'
+                          }`}>
                           {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-[#FF5A24]" />}
                         </div>
                       </button>
@@ -453,8 +451,8 @@ export const CitizenApp: React.FC = () => {
               <div>
                 {/* Top Back & Header */}
                 <div className="flex items-center justify-between pb-3">
-                  <button 
-                    onClick={() => setCurrentView('sos_1')} 
+                  <button
+                    onClick={() => setCurrentView('sos_1')}
                     className="p-1 -ml-1 text-[#18212B] hover:text-[#FF5A24] transition"
                   >
                     <ArrowLeft className="w-5 h-5" />
@@ -478,8 +476,8 @@ export const CitizenApp: React.FC = () => {
                 {/* Stylized Mini Map with Floating Location Bubble */}
                 <div className="w-full h-44 rounded-2xl overflow-hidden border border-[#E1E7ED] bg-[#F1F5F9] relative flex items-center justify-center mb-3 shadow-2xs">
                   {/* Map Grid Graphic background */}
-                  <div 
-                    className="absolute inset-0 opacity-40 bg-[radial-gradient(#94A3B8_1px,transparent_1px)] [background-size:12px_12px]" 
+                  <div
+                    className="absolute inset-0 opacity-40 bg-[radial-gradient(#94A3B8_1px,transparent_1px)] [background-size:12px_12px]"
                   />
                   <div className="absolute inset-0 flex items-center justify-center">
                     <svg className="w-full h-full opacity-30" viewBox="0 0 300 160">
@@ -504,7 +502,7 @@ export const CitizenApp: React.FC = () => {
                   </div>
 
                   {/* Recenter button */}
-                  <button 
+                  <button
                     onClick={() => alert("GPS lock verified: 12.3180° N, 76.6430° E")}
                     className="absolute bottom-2 right-2 p-2 rounded-full bg-white shadow-md border border-[#E1E7ED] text-[#18212B] active:scale-90 transition z-10"
                   >
@@ -526,7 +524,7 @@ export const CitizenApp: React.FC = () => {
                   </div>
 
                   {/* Select on Map */}
-                  <button 
+                  <button
                     onClick={() => alert("Tap anywhere on the map to pin alternate location.")}
                     className="w-full p-3 bg-white rounded-xl border border-[#E1E7ED] hover:bg-[#F8FAFC] flex items-center justify-between text-left transition"
                   >
@@ -538,7 +536,7 @@ export const CitizenApp: React.FC = () => {
                   </button>
 
                   {/* Enter Manually */}
-                  <button 
+                  <button
                     onClick={() => {
                       const manual = prompt("Enter specific landmark or street address in Mysuru:", locationName);
                       if (manual) setLocationName(manual);
@@ -575,8 +573,8 @@ export const CitizenApp: React.FC = () => {
               <div>
                 {/* Top Back & Header */}
                 <div className="flex items-center justify-between pb-3">
-                  <button 
-                    onClick={() => setCurrentView('sos_2')} 
+                  <button
+                    onClick={() => setCurrentView('sos_2')}
                     className="p-1 -ml-1 text-[#18212B] hover:text-[#FF5A24] transition"
                   >
                     <ArrowLeft className="w-5 h-5" />
@@ -644,7 +642,7 @@ export const CitizenApp: React.FC = () => {
                   <label className="text-xs font-bold text-[#18212B]">
                     Additional information <span className="text-[#687789] font-normal">(optional)</span>
                   </label>
-                  
+
                   {/* Checkbox 1 */}
                   <label className="flex items-center gap-2.5 text-xs text-[#18212B] cursor-pointer">
                     <input
@@ -727,11 +725,10 @@ export const CitizenApp: React.FC = () => {
                   {activeTrackingData.timeline.map((item, idx) => (
                     <div key={item.step} className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                          item.done 
-                            ? 'bg-[#16865D] text-white' 
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center ${item.done
+                            ? 'bg-[#16865D] text-white'
                             : 'bg-white border-2 border-[#CBD5E1]'
-                        }`}>
+                          }`}>
                           {item.done && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
                         <span className={`font-semibold ${item.active ? 'text-[#16865D] font-bold' : item.done ? 'text-[#18212B]' : 'text-[#687789]'}`}>
@@ -765,11 +762,11 @@ export const CitizenApp: React.FC = () => {
               <div className="space-y-4">
                 {/* Header with Back to Home */}
                 <div className="flex items-center justify-between pb-2 border-b border-[#E1E7ED]">
-                  <button 
+                  <button
                     onClick={() => {
                       setCurrentView('tab');
                       setActiveTab('home');
-                    }} 
+                    }}
                     className="p-1 -ml-1 text-[#18212B] hover:text-[#FF5A24] transition"
                   >
                     <ArrowLeft className="w-5 h-5" />
@@ -823,11 +820,10 @@ export const CitizenApp: React.FC = () => {
                     {activeTrackingData.timeline.map((item) => (
                       <div key={item.step} className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-3">
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
-                            item.done 
-                              ? 'bg-[#16865D] text-white' 
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center ${item.done
+                              ? 'bg-[#16865D] text-white'
                               : 'bg-white border-2 border-[#CBD5E1]'
-                          }`}>
+                            }`}>
                             {item.done && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
                           <span className={`font-semibold ${item.active ? 'text-[#16865D] font-bold' : item.done ? 'text-[#18212B]' : 'text-[#687789]'}`}>
@@ -909,7 +905,7 @@ export const CitizenApp: React.FC = () => {
               </div>
 
               {/* Active User SOS Tracking Shortcut */}
-              <div 
+              <div
                 onClick={() => setCurrentView('sos_tracking')}
                 className="p-3.5 rounded-2xl bg-[#FFF2EC] border border-[#FF5A24]/40 hover:bg-[#FFE8DE] transition cursor-pointer flex items-center justify-between"
               >
@@ -927,44 +923,53 @@ export const CitizenApp: React.FC = () => {
 
               {/* Broadcast Alerts Stream */}
               <div className="space-y-3">
-                <div className="p-3.5 bg-white border border-[#E1E7ED] rounded-2xl shadow-2xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded-full bg-red-50 text-[#D93636] border border-red-200 text-[10px] font-bold">
-                      URGENT WARNING
-                    </span>
-                    <span className="text-[10px] text-[#687789] font-mono">18:00 IST</span>
+                {state?.alerts && state.alerts.length > 0 ? (
+                  state.alerts.map((al) => {
+                    const isCrit = al.severity === 'Critical';
+                    return (
+                      <div key={al.id} className="p-3.5 bg-white border border-[#E1E7ED] rounded-2xl shadow-2xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isCrit ? 'bg-red-50 text-[#D93636] border-red-200' : 'bg-amber-50 text-[#D97706] border-amber-200'
+                            }`}>
+                            {al.severity.toUpperCase()}
+                          </span>
+                          <span className="text-[10px] text-[#687789] font-mono">SEOC</span>
+                        </div>
+                        <h3 className="text-xs font-bold text-[#18212B]">{al.title}</h3>
+                        <p className="text-xs text-[#687789] leading-snug">{al.description}</p>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="p-3.5 bg-white border border-[#E1E7ED] rounded-2xl shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded-full bg-red-50 text-[#D93636] border border-red-200 text-[10px] font-bold">
+                        URGENT WARNING
+                      </span>
+                      <span className="text-[10px] text-[#687789] font-mono">18:00 IST</span>
+                    </div>
+                    <h3 className="text-xs font-bold text-[#18212B]">Kukkarahalli Lake Canal Overflow</h3>
+                    <p className="text-xs text-[#687789] leading-snug">
+                      Ground-level residences in Saraswathipuram and Vijayanagar advised to seek higher ground.
+                    </p>
                   </div>
-                  <h3 className="text-xs font-bold text-[#18212B]">Kukkarahalli Lake Canal Overflow</h3>
-                  <p className="text-xs text-[#687789] leading-snug">
-                    Ground-level residences in Saraswathipuram and Vijayanagar advised to seek higher ground. Avoid culverts.
-                  </p>
-                </div>
+                )}
 
-                <div className="p-3.5 bg-white border border-[#E1E7ED] rounded-2xl shadow-2xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[#D97706] border border-amber-200 text-[10px] font-bold">
-                      ROAD ADVISORY
-                    </span>
-                    <span className="text-[10px] text-[#687789] font-mono">17:45 IST</span>
+                {/* Dynamic Shelters List */}
+                {state?.shelters && state.shelters.map((sh) => (
+                  <div key={sh.id} className="p-3.5 bg-white border border-[#E1E7ED] rounded-2xl shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#16865D] border border-emerald-200 text-[10px] font-bold">
+                        SHELTER {sh.operational_status.toUpperCase()}
+                      </span>
+                      <span className="text-[10px] text-[#16865D] font-mono font-semibold">{sh.current_occupancy}/{sh.capacity} Occupied</span>
+                    </div>
+                    <h3 className="text-xs font-bold text-[#18212B]">{sh.name}</h3>
+                    <p className="text-xs text-[#687789] leading-snug">
+                      {sh.address}. Relief supplies: {sh.supplies_status}.
+                    </p>
                   </div>
-                  <h3 className="text-xs font-bold text-[#18212B]">Hinkal Ring Road Segment Closed</h3>
-                  <p className="text-xs text-[#687789] leading-snug">
-                    Severe waterlogging near flyover. Response vehicles rerouted via KRS road corridor.
-                  </p>
-                </div>
-
-                <div className="p-3.5 bg-white border border-[#E1E7ED] rounded-2xl shadow-2xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[#16865D] border border-emerald-200 text-[10px] font-bold">
-                      SHELTER OPEN
-                    </span>
-                    <span className="text-[10px] text-[#687789] font-mono">17:15 IST</span>
-                  </div>
-                  <h3 className="text-xs font-bold text-[#18212B]">VVCE Campus Relief Camp Activated</h3>
-                  <p className="text-xs text-[#687789] leading-snug">
-                    Clean drinking water, hot meals, and primary first aid available for 450 civilians.
-                  </p>
-                </div>
+                ))}
               </div>
             </div>
           )}
@@ -998,7 +1003,7 @@ export const CitizenApp: React.FC = () => {
                 <h4 className="text-xs font-bold text-[#18212B] uppercase tracking-wider">
                   Trusted Emergency Contacts
                 </h4>
-                
+
                 <div className="p-3 bg-white rounded-xl border border-[#E1E7ED] flex items-center justify-between text-xs">
                   <div>
                     <div className="font-bold text-[#18212B]">Sarah Doe (Spouse)</div>
@@ -1049,11 +1054,10 @@ export const CitizenApp: React.FC = () => {
               setActiveTab('home');
               setCurrentView('tab');
             }}
-            className={`flex flex-col items-center gap-1 transition ${
-              activeTab === 'home' && currentView === 'tab'
+            className={`flex flex-col items-center gap-1 transition ${activeTab === 'home' && currentView === 'tab'
                 ? 'text-[#FF5A24] font-bold'
                 : 'text-[#687789] hover:text-[#18212B]'
-            }`}
+              }`}
           >
             <Home className="w-5 h-5" />
             <span className="text-[10px] leading-none">Home</span>
@@ -1065,11 +1069,10 @@ export const CitizenApp: React.FC = () => {
               setActiveTab('map');
               setCurrentView('tab');
             }}
-            className={`flex flex-col items-center gap-1 transition ${
-              activeTab === 'map' && currentView === 'tab'
+            className={`flex flex-col items-center gap-1 transition ${activeTab === 'map' && currentView === 'tab'
                 ? 'text-[#FF5A24] font-bold'
                 : 'text-[#687789] hover:text-[#18212B]'
-            }`}
+              }`}
           >
             <MapIcon className="w-5 h-5" />
             <span className="text-[10px] leading-none">Map</span>
@@ -1081,11 +1084,10 @@ export const CitizenApp: React.FC = () => {
               setActiveTab('updates');
               setCurrentView('tab');
             }}
-            className={`flex flex-col items-center gap-1 transition ${
-              activeTab === 'updates' && currentView === 'tab'
+            className={`flex flex-col items-center gap-1 transition ${activeTab === 'updates' && currentView === 'tab'
                 ? 'text-[#FF5A24] font-bold'
                 : 'text-[#687789] hover:text-[#18212B]'
-            }`}
+              }`}
           >
             <Bell className="w-5 h-5" />
             <span className="text-[10px] leading-none">Updates</span>
@@ -1097,11 +1099,10 @@ export const CitizenApp: React.FC = () => {
               setActiveTab('profile');
               setCurrentView('tab');
             }}
-            className={`flex flex-col items-center gap-1 transition ${
-              activeTab === 'profile' && currentView === 'tab'
+            className={`flex flex-col items-center gap-1 transition ${activeTab === 'profile' && currentView === 'tab'
                 ? 'text-[#FF5A24] font-bold'
                 : 'text-[#687789] hover:text-[#18212B]'
-            }`}
+              }`}
           >
             <User className="w-5 h-5" />
             <span className="text-[10px] leading-none">Profile</span>

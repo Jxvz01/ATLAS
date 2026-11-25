@@ -23,7 +23,10 @@ import {
   Menu,
   X,
   Compass,
-  AlertCircle
+  AlertCircle,
+  MessageSquare,
+  Siren,
+  CheckCheck
 } from 'lucide-react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -31,7 +34,18 @@ import { useAtlasStore } from '../store/atlasStore';
 import { useAuthStore } from '../store/authStore';
 
 export const RescuerPortal: React.FC = () => {
-  const { state, updateAssignmentStatus, reportRoadBlockage } = useAtlasStore();
+  const { 
+    state, 
+    updateAssignmentStatus, 
+    reportRoadBlockage,
+    fieldAlerts,
+    missionMessages,
+    fetchFieldAlerts,
+    fetchMissionMessages,
+    submitFieldAlert,
+    sendMissionMessage,
+    acknowledgeMessage
+  } = useAtlasStore();
   const { logout, userName } = useAuthStore();
 
   const [activeNav, setActiveNav] = useState('My Assignment');
@@ -39,7 +53,22 @@ export const RescuerPortal: React.FC = () => {
   const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
 
   // Modals state
-  const [activeModal, setActiveModal] = useState<'report' | 'backup' | 'medical' | 'complete' | null>(null);
+  const [activeModal, setActiveModal] = useState<'report' | 'backup' | 'medical' | 'complete' | 'nearby' | 'comms' | null>(null);
+  
+  // Report Nearby Emergency states
+  const [nearbyType, setNearbyType] = useState('Trapped People');
+  const [nearbyDesc, setNearbyDesc] = useState('');
+  const [nearbyLocDesc, setNearbyLocDesc] = useState('200m east along current response corridor');
+  const [nearbyPeople, setNearbyPeople] = useState(3);
+  const [nearbyCasualties, setNearbyCasualties] = useState(0);
+  const [nearbyRescueReq, setNearbyRescueReq] = useState(true);
+  const [nearbyMedicalReq, setNearbyMedicalReq] = useState(false);
+  const [nearbyUrgency, setNearbyUrgency] = useState<'Critical' | 'High' | 'Medium'>('Critical');
+  const [nearbySubmitting, setNearbySubmitting] = useState(false);
+
+  // Command Comms states
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
   
   // Field Report form states
   const [reportCasualties, setReportCasualties] = useState(0);
@@ -70,6 +99,23 @@ export const RescuerPortal: React.FC = () => {
   const targetIncident = activeAssignment 
     ? state?.incidents.find(i => i.id === activeAssignment.incident_id) 
     : state?.incidents[0];
+
+  const missionId = activeAssignment?.id || targetIncident?.id || 'ASG-01';
+  const myFieldAlerts = fieldAlerts.filter(a => a.rescuer_id === (currentUnit?.id || 'R-04'));
+  const unackedInstructions = missionMessages.filter(
+    m => m.sender_role === 'admin' && !m.acknowledged
+  );
+
+  // Poll mission messages and field alerts every 3.5s
+  useEffect(() => {
+    fetchFieldAlerts();
+    fetchMissionMessages(missionId);
+    const interval = setInterval(() => {
+      fetchFieldAlerts();
+      fetchMissionMessages(missionId);
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [missionId, fetchFieldAlerts, fetchMissionMessages]);
 
   // Lifecycle states: ASSIGNED -> ACKNOWLEDGED -> EN ROUTE -> ON SCENE -> COMPLETED
   // Map backend status strings to lifecycle stages
@@ -330,6 +376,54 @@ export const RescuerPortal: React.FC = () => {
             <button onClick={() => setStatusFeedback(null)} className="text-emerald-700 font-bold">✕</button>
           </div>
         )}
+
+        {/* FIELD-TO-COMMAND COORDINATION BAR */}
+        <div className="bg-white rounded-xl border border-[#E3E8ED] p-3.5 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-[#DC3C3C] shrink-0">
+              <Siren className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-[#17212B]">Field-to-Command Coordination</div>
+              <div className="text-[11px] text-[#64748B]">
+                {myFieldAlerts.length > 0
+                  ? `${myFieldAlerts.length} field alert(s) active • Latest: ${myFieldAlerts[0].status}`
+                  : 'Discovered another emergency nearby? Alert Command immediately.'}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setActiveModal('comms')}
+              className={`px-3.5 py-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
+                unackedInstructions.length > 0
+                  ? 'bg-amber-50 border-amber-300 text-amber-800 animate-pulse'
+                  : 'bg-[#F8FAFC] border-[#E3E8ED] text-[#17212B] hover:bg-[#F1F5F9]'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 text-[#F26536]" />
+              <span>Command Comms</span>
+              {unackedInstructions.length > 0 ? (
+                <span className="px-1.5 py-0.5 rounded-full bg-[#DC3C3C] text-white text-[10px] font-mono">
+                  {unackedInstructions.length} NEW
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.5 rounded-full bg-[#E3E8ED] text-[#64748B] text-[10px] font-mono">
+                  {missionMessages.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveModal('nearby')}
+              className="px-4 py-2.5 rounded-xl bg-[#DC3C3C] hover:bg-red-700 active:scale-98 text-white text-xs font-extrabold tracking-wide flex items-center justify-center gap-2 shadow-sm transition"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              <span>REPORT NEARBY EMERGENCY</span>
+            </button>
+          </div>
+        </div>
 
         {/* TOP ROW: Current Assignment Card (Left) & MapLibre Route View (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
@@ -872,6 +966,306 @@ export const RescuerPortal: React.FC = () => {
                 className="flex-1 py-2 text-xs font-semibold text-white bg-[#23966B] hover:bg-emerald-700 rounded-xl transition shadow-xs"
               >
                 Confirm Completion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: REPORT NEARBY EMERGENCY */}
+      {activeModal === 'nearby' && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E3E8ED] max-w-md w-full p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[#E3E8ED] pb-3">
+              <div className="flex items-center gap-2">
+                <Siren className="w-5 h-5 text-[#DC3C3C]" />
+                <div>
+                  <h3 className="text-sm font-bold text-[#17212B]">Report Nearby Emergency</h3>
+                  <p className="text-[10px] text-[#64748B]">Linked to {currentUnit?.id || 'R-04'} • Active Mission {targetIncident?.id || 'INC-101'}</p>
+                </div>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="text-[#64748B] hover:text-[#17212B] font-bold">✕</button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-[#64748B] uppercase">Emergency Category</label>
+                  <select
+                    value={nearbyType}
+                    onChange={(e) => setNearbyType(e.target.value)}
+                    className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] text-xs font-semibold"
+                  >
+                    <option value="Trapped People">Trapped People</option>
+                    <option value="Flooding">Flash Flooding</option>
+                    <option value="Structural Collapse">Structural Collapse</option>
+                    <option value="Road Blockage">Road Blockage</option>
+                    <option value="Medical">Medical Emergency</option>
+                    <option value="Hazard">Power / Gas Hazard</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-[#64748B] uppercase">Urgency Level</label>
+                  <select
+                    value={nearbyUrgency}
+                    onChange={(e) => setNearbyUrgency(e.target.value as 'Critical' | 'High' | 'Medium')}
+                    className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] text-xs font-semibold"
+                  >
+                    <option value="Critical">Critical (Life Threat)</option>
+                    <option value="High">High (Urgent)</option>
+                    <option value="Medium">Medium</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-[#64748B] uppercase">Location / Landmark</label>
+                <input
+                  type="text"
+                  value={nearbyLocDesc}
+                  onChange={(e) => setNearbyLocDesc(e.target.value)}
+                  className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] text-xs"
+                />
+                <div className="text-[10px] font-mono text-[#64748B] mt-1">
+                  Auto-GPS: {((targetIncident?.latitude || 12.312) + 0.0025).toFixed(4)}, {((targetIncident?.longitude || 76.641) + 0.0025).toFixed(4)}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-[#64748B] uppercase">Situation Description</label>
+                <textarea
+                  value={nearbyDesc}
+                  onChange={(e) => setNearbyDesc(e.target.value)}
+                  placeholder="Describe stranded civilians, structural danger, or access hazards..."
+                  rows={2}
+                  className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[11px] font-semibold text-[#64748B] uppercase">People Affected</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={nearbyPeople}
+                    onChange={(e) => setNearbyPeople(parseInt(e.target.value) || 0)}
+                    className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-[#64748B] uppercase">Casualties</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={nearbyCasualties}
+                    onChange={(e) => setNearbyCasualties(parseInt(e.target.value) || 0)}
+                    className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 pt-1">
+                <label className="flex items-center gap-2 text-xs font-medium text-[#17212B] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={nearbyRescueReq}
+                    onChange={(e) => setNearbyRescueReq(e.target.checked)}
+                    className="rounded border-[#E3E8ED] text-[#F26536]"
+                  />
+                  <span>Immediate Rescue</span>
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium text-[#17212B] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={nearbyMedicalReq}
+                    onChange={(e) => setNearbyMedicalReq(e.target.checked)}
+                    className="rounded border-[#E3E8ED] text-[#DC3C3C]"
+                  />
+                  <span>Medical Aid Needed</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-[#E3E8ED]">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="flex-1 py-2.5 text-xs font-semibold text-[#64748B] bg-[#F5F7F9] hover:bg-[#E3E8ED] rounded-xl transition"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={nearbySubmitting || !nearbyDesc.trim()}
+                onClick={async () => {
+                  setNearbySubmitting(true);
+                  try {
+                    const res = await submitFieldAlert({
+                      rescuer_id: currentUnit?.id || 'R-04',
+                      rescuer_name: currentUnit?.name || userName || 'Unit R-04',
+                      active_assignment_id: activeAssignment?.id,
+                      original_incident_id: targetIncident?.id,
+                      emergency_type: nearbyType,
+                      description: nearbyDesc.trim(),
+                      latitude: (targetIncident?.latitude || 12.312) + 0.0025,
+                      longitude: (targetIncident?.longitude || 76.641) + 0.0025,
+                      location_description: nearbyLocDesc,
+                      people_affected: nearbyPeople,
+                      casualties: nearbyCasualties,
+                      requires_rescue: nearbyRescueReq,
+                      requires_medical: nearbyMedicalReq,
+                      urgency: nearbyUrgency
+                    });
+                    setNearbyDesc('');
+                    setActiveModal('comms');
+                    await fetchMissionMessages(missionId);
+                    setStatusFeedback(`Nearby emergency ${res?.incident?.id || ''} reported to Command Center.`);
+                    setTimeout(() => setStatusFeedback(null), 5000);
+                  } catch (e) {
+                    setStatusFeedback('Failed to transmit field alert. Please retry.');
+                  } finally {
+                    setNearbySubmitting(false);
+                  }
+                }}
+                className="flex-1 py-2.5 text-xs font-bold text-white bg-[#DC3C3C] hover:bg-red-700 disabled:opacity-50 rounded-xl transition shadow-xs"
+              >
+                {nearbySubmitting ? 'Transmitting...' : 'Transmit Field Alert'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: COMMAND COMMS THREAD */}
+      {activeModal === 'comms' && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E3E8ED] max-w-lg w-full shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-4 border-b border-[#E3E8ED] flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <MessageSquare className="w-5 h-5 text-[#F26536]" />
+                <div>
+                  <h3 className="text-sm font-bold text-[#17212B]">Command Center Comms</h3>
+                  <p className="text-[10px] font-mono text-[#64748B]">Mission {missionId} • Unit {currentUnit?.id || 'R-04'}</p>
+                </div>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="text-[#64748B] hover:text-[#17212B] font-bold">✕</button>
+            </div>
+
+            {/* Active Field Alerts Summary inside Comms */}
+            {myFieldAlerts.length > 0 && (
+              <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E3E8ED] space-y-1.5">
+                <div className="text-[10px] font-bold uppercase text-[#64748B]">Reported Field Emergencies</div>
+                {myFieldAlerts.slice(0, 2).map(fa => (
+                  <div key={fa.id} className="flex items-center justify-between text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-[#E3E8ED]">
+                    <span className="font-semibold text-[#17212B] truncate">{fa.new_incident_id}: {fa.emergency_type}</span>
+                    <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold ${
+                      fa.status === 'Combined' ? 'bg-emerald-100 text-emerald-700' :
+                      fa.status === 'Separate Unit Assigned' ? 'bg-sky-100 text-sky-700' :
+                      fa.status === 'Acknowledged' ? 'bg-amber-100 text-amber-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {fa.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Message Feed */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#F5F7F9]/60 min-h-[260px]">
+              {missionMessages.length === 0 ? (
+                <div className="text-center py-10 text-xs text-[#64748B]">
+                  No mission messages yet. Send an update or report a nearby emergency.
+                </div>
+              ) : (
+                missionMessages.map(msg => {
+                  const isCommand = msg.sender_role === 'admin';
+                  const isInstruction = msg.message_type === 'instruction' || isCommand;
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                        isCommand
+                          ? 'bg-white border-[#F26536]/40 shadow-xs'
+                          : 'bg-[#17212B] text-white border-[#17212B] ml-6'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`font-bold text-[11px] ${isCommand ? 'text-[#F26536]' : 'text-emerald-400'}`}>
+                          {msg.sender_name} {msg.priority === 'Urgent' ? '• URGENT' : ''}
+                        </span>
+                        <span className={`text-[10px] font-mono ${isCommand ? 'text-[#64748B]' : 'text-slate-400'}`}>
+                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className={`leading-relaxed ${isCommand ? 'text-[#17212B]' : 'text-slate-100'}`}>
+                        {msg.content}
+                      </p>
+                      {isInstruction && (
+                        <div className="pt-1 flex items-center justify-end">
+                          {msg.acknowledged ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#23966B] bg-emerald-50 px-2 py-0.5 rounded-full">
+                              <CheckCheck className="w-3 h-3" /> Acknowledged
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => acknowledgeMessage(msg.id)}
+                              className="px-2.5 py-1 rounded-lg bg-[#F26536] hover:bg-[#E05322] text-white text-[10px] font-bold transition"
+                            >
+                              Acknowledge Instruction
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Composer */}
+            <div className="p-3 border-t border-[#E3E8ED] bg-white rounded-b-2xl flex items-center gap-2">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && chatInput.trim() && !chatSending) {
+                    setChatSending(true);
+                    await sendMissionMessage(missionId, {
+                      sender_id: currentUnit?.id || 'R-04',
+                      sender_name: currentUnit?.name || 'Unit R-04',
+                      sender_role: 'rescuer',
+                      message_type: 'chat',
+                      content: chatInput.trim(),
+                      priority: 'Normal'
+                    });
+                    setChatInput('');
+                    setChatSending(false);
+                  }
+                }}
+                placeholder="Send status update or question to Command..."
+                className="flex-1 p-2.5 rounded-xl border border-[#E3E8ED] bg-[#F8FAFC] text-xs focus:outline-none focus:border-[#F26536]"
+              />
+              <button
+                disabled={chatSending || !chatInput.trim()}
+                onClick={async () => {
+                  if (!chatInput.trim()) return;
+                  setChatSending(true);
+                  await sendMissionMessage(missionId, {
+                    sender_id: currentUnit?.id || 'R-04',
+                    sender_name: currentUnit?.name || 'Unit R-04',
+                    sender_role: 'rescuer',
+                    message_type: 'chat',
+                    content: chatInput.trim(),
+                    priority: 'Normal'
+                  });
+                  setChatInput('');
+                  setChatSending(false);
+                }}
+                className="px-3.5 py-2.5 rounded-xl bg-[#F26536] hover:bg-[#E05322] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Send</span>
               </button>
             </div>
           </div>

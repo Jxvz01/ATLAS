@@ -56,7 +56,8 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
     state, 
     selectedIncidentId, 
     setSelectedIncident, 
-    evaluationResult 
+    evaluationResult,
+    fieldAlerts
   } = useAtlasStore();
 
   // Basemap style URLs
@@ -461,18 +462,27 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
         const isCritical = inc.priority_level === 'Critical';
         const isHigh = inc.priority_level === 'High';
         const isModerate = inc.priority_level === 'Medium';
+        const fieldAlert = fieldAlerts.find(fa => fa.new_incident_id === inc.id);
+        const isFieldDiscovery = Boolean(fieldAlert) || inc.id.startsWith('INC-FLD-');
 
         const el = document.createElement('div');
-        el.className = 'cursor-pointer select-none transition-transform hover:scale-110';
+        el.className = 'cursor-pointer select-none transition-transform hover:scale-110 relative flex items-center justify-center';
 
         // Clean circular badge with appropriate color
         const color = isCritical ? '#DC3C3C' : isHigh ? '#F26A38' : isModerate ? '#E6A23C' : '#718096';
 
-        el.innerHTML = `
-          <div style="background-color: ${color};" class="w-6 h-6 rounded-full border-2 border-white shadow flex items-center justify-center text-white font-bold text-[11px]">
-            !
-          </div>
-        `;
+        el.innerHTML = isFieldDiscovery
+          ? `
+            <div class="absolute w-9 h-9 rounded-full bg-[#DC3C3C]/30 animate-ping"></div>
+            <div style="background-color: ${color};" class="relative z-10 w-7 h-7 rounded-full border-2 border-white shadow-md flex items-center justify-center text-white font-black text-[10px]">
+              F!
+            </div>
+          `
+          : `
+            <div style="background-color: ${color};" class="w-6 h-6 rounded-full border-2 border-white shadow flex items-center justify-center text-white font-bold text-[11px]">
+              !
+            </div>
+          `;
 
         el.onclick = () => {
           setSelectedIncident(inc.id);
@@ -480,14 +490,15 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
         };
 
         const popup = new maplibregl.Popup({ offset: 12, closeButton: false }).setHTML(`
-          <div class="font-sans text-xs bg-white text-[#18212B] p-2 min-w-[180px]">
+          <div class="font-sans text-xs bg-white text-[#18212B] p-2 min-w-[190px]">
             <div class="flex items-center justify-between font-mono text-[10px] pb-1 border-b border-[#E5E9ED]">
               <span class="font-bold text-[#F26A38]">${inc.id}</span>
               <span class="font-bold uppercase px-1 py-0.2 rounded" style="background-color: ${color}20; color: ${color};">
-                ${inc.priority_level}
+                ${isFieldDiscovery ? 'FIELD ALERT' : inc.priority_level}
               </span>
             </div>
-            <div class="font-bold text-xs text-[#18212B] mt-1.5">${inc.type}</div>
+            ${fieldAlert ? `<div class="text-[10px] font-semibold text-[#DC3C3C] mt-1">Reported by ${fieldAlert.rescuer_name} (${fieldAlert.rescuer_id})</div>` : ''}
+            <div class="font-bold text-xs text-[#18212B] mt-1">${inc.type}</div>
             <div class="text-[#718096] text-[11px] mt-0.5 leading-snug">${inc.description}</div>
             <div class="mt-2 pt-1 border-t border-[#E5E9ED] flex justify-between font-mono text-[10px] text-[#718096]">
               <span>Affected: <b class="text-[#18212B]">${inc.affected_population}</b></span>
@@ -630,7 +641,7 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
       });
     }
 
-  }, [state, selectedIncidentId, visibleLayers, baseLayer]);
+  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts]);
 
   const handleRecenter = () => {
     mapRef.current?.flyTo({

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert } from '../types/atlas';
+import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert, IncomingPatient, Shelter, FieldAlert, MissionMessage } from '../types/atlas';
 
 const API_BASE = 'http://localhost:8000/api';
 
@@ -88,6 +88,105 @@ export const api = {
     notes?: string;
   }) => {
     const res = await axios.post(`${API_BASE}/field-reports`, data);
+    return res.data;
+  },
+
+  // Medical Referrals
+  getReferrals: async (hospitalId?: string): Promise<IncomingPatient[]> => {
+    const params = hospitalId ? { hospital_id: hospitalId } : {};
+    const res = await axios.get(`${API_BASE}/referrals`, { params });
+    return res.data;
+  },
+
+  createReferral: async (data: {
+    incident_id: string;
+    hospital_id: string;
+    resource_id: string;
+    estimated_arrival_minutes?: number;
+    estimated_patient_count?: number;
+    patient_condition: string;
+    severity?: string;
+    treatment_required?: string;
+  }): Promise<IncomingPatient> => {
+    const res = await axios.post(`${API_BASE}/referrals`, data);
+    return res.data;
+  },
+
+  updateReferral: async (referralId: string, data: {
+    status: string;
+    estimated_arrival_minutes?: number;
+  }): Promise<IncomingPatient> => {
+    const res = await axios.patch(`${API_BASE}/referrals/${referralId}`, data);
+    return res.data;
+  },
+
+  // Shelters
+  getShelters: async (): Promise<Shelter[]> => {
+    const res = await axios.get(`${API_BASE}/shelters`);
+    return res.data;
+  },
+
+  updateShelter: async (shelterId: string, data: Partial<Shelter>): Promise<Shelter> => {
+    const res = await axios.patch(`${API_BASE}/shelters/${shelterId}`, data);
+    return res.data;
+  },
+
+  // Field-to-Command Alerts & Mission Communications
+  getFieldAlerts: async (rescuerId?: string): Promise<FieldAlert[]> => {
+    const res = await axios.get(`${API_BASE}/field-alerts`, { params: rescuerId ? { rescuer_id: rescuerId } : {} });
+    return res.data;
+  },
+
+  submitFieldAlert: async (data: {
+    rescuer_id: string;
+    rescuer_name: string;
+    active_assignment_id?: string;
+    original_incident_id?: string;
+    emergency_type: string;
+    description: string;
+    latitude?: number;
+    longitude?: number;
+    location_description?: string;
+    people_affected?: number;
+    casualties?: number;
+    requires_rescue?: boolean;
+    requires_medical?: boolean;
+    hazard_info?: string;
+    urgency?: string;
+  }): Promise<{ alert: FieldAlert; incident: Incident }> => {
+    const res = await axios.post(`${API_BASE}/field-alerts`, data);
+    return res.data;
+  },
+
+  updateFieldAlertDecision: async (alertId: string, data: {
+    status: string;
+    command_decision: string;
+    decision_reason?: string;
+  }) => {
+    const res = await axios.patch(`${API_BASE}/field-alerts/${alertId}/decision`, data);
+    return res.data;
+  },
+
+  getMissionMessages: async (missionId: string): Promise<MissionMessage[]> => {
+    const res = await axios.get(`${API_BASE}/missions/${missionId}/messages`);
+    return res.data;
+  },
+
+  sendMissionMessage: async (missionId: string, data: {
+    sender_id: string;
+    sender_name: string;
+    sender_role: string;
+    content: string;
+    priority?: string;
+    field_alert_id?: string;
+    message_type?: string;
+  }): Promise<MissionMessage> => {
+    const res = await axios.post(`${API_BASE}/missions/${missionId}/messages`, data);
+    return res.data;
+  },
+
+  acknowledgeMessage: async (messageId: string) => {
+    const res = await axios.post(`${API_BASE}/messages/${messageId}/acknowledge`);
     return res.data;
   },
 

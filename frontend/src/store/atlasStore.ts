@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert } from '../types/atlas';
+import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert, FieldAlert, MissionMessage } from '../types/atlas';
 import { api } from '../services/api';
 
 interface AtlasStore {
@@ -28,7 +28,19 @@ interface AtlasStore {
   reportRoadBlockage: (roadId: string, lat: number, lon: number, reason: string) => Promise<void>;
   clearRoadBlockage: (blockageId: string) => Promise<void>;
   submitSOS: (data: { type: string; description: string; latitude: number; longitude: number; affected_population: number }) => Promise<Incident>;
+  updateReferralStatus: (referralId: string, status: string) => Promise<void>;
+  updateShelterOccupancy: (shelterId: string, occupancy: number) => Promise<void>;
   
+  // Field Alerts & Mission Messages
+  fieldAlerts: FieldAlert[];
+  missionMessages: MissionMessage[];
+  fetchFieldAlerts: () => Promise<void>;
+  fetchMissionMessages: (missionId: string) => Promise<void>;
+  submitFieldAlert: (data: any) => Promise<any>;
+  sendMissionMessage: (missionId: string, data: any) => Promise<void>;
+  acknowledgeMessage: (messageId: string) => Promise<void>;
+  updateFieldAlertDecision: (alertId: string, decision: any) => Promise<void>;
+
   // Simulations
   triggerSimNewIncident: () => Promise<void>;
   triggerSimBlockRoad: () => Promise<void>;
@@ -129,6 +141,61 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
     const inc = await api.createIncident(data);
     await get().fetchState();
     return inc;
+  },
+
+  updateReferralStatus: async (referralId: string, status: string) => {
+    await api.updateReferral(referralId, { status });
+    await get().fetchState();
+  },
+
+  updateShelterOccupancy: async (shelterId: string, occupancy: number) => {
+    await api.updateShelter(shelterId, { current_occupancy: occupancy });
+    await get().fetchState();
+  },
+
+  fieldAlerts: [],
+  missionMessages: [],
+
+  fetchFieldAlerts: async () => {
+    try {
+      const data = await api.getFieldAlerts();
+      set({ fieldAlerts: data });
+    } catch (e) {
+      console.error('Failed to fetch field alerts', e);
+    }
+  },
+
+  fetchMissionMessages: async (missionId: string) => {
+    try {
+      const data = await api.getMissionMessages(missionId);
+      set({ missionMessages: data });
+    } catch (e) {
+      console.error('Failed to fetch mission messages', e);
+    }
+  },
+
+  submitFieldAlert: async (data: any) => {
+    const res = await api.submitFieldAlert(data);
+    await get().fetchFieldAlerts();
+    await get().fetchState();
+    return res;
+  },
+
+  sendMissionMessage: async (missionId: string, data: any) => {
+    await api.sendMissionMessage(missionId, data);
+    await get().fetchMissionMessages(missionId);
+  },
+
+  acknowledgeMessage: async (messageId: string) => {
+    await api.acknowledgeMessage(messageId);
+    const msgs = get().missionMessages.map(m => m.id === messageId ? { ...m, acknowledged: true } : m);
+    set({ missionMessages: msgs });
+  },
+
+  updateFieldAlertDecision: async (alertId: string, decision: any) => {
+    await api.updateFieldAlertDecision(alertId, decision);
+    await get().fetchFieldAlerts();
+    await get().fetchState();
   },
 
   triggerSimNewIncident: async () => {

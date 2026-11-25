@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Radio, 
   Sparkles, 
@@ -21,7 +21,10 @@ import {
   Bed,
   Layers,
   TrendingUp,
-  Cpu
+  Cpu,
+  MessageSquare,
+  Siren,
+  CheckCheck
 } from 'lucide-react';
 import { useAtlasStore } from '../store/atlasStore';
 import { Incident } from '../types/atlas';
@@ -37,13 +40,38 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
     setSelectedIncident, 
     evaluationResult,
     assignResource,
-    updateIncident
+    updateIncident,
+    fieldAlerts,
+    missionMessages,
+    fetchFieldAlerts,
+    fetchMissionMessages,
+    updateFieldAlertDecision,
+    sendMissionMessage
   } = useAtlasStore();
 
-  // Mode: 'alerts' (default) | 'intelligence' (ATLAS AI)
-  const [activeTab, setActiveTab] = useState<'alerts' | 'intelligence'>('alerts');
+  // Mode: 'alerts' (default) | 'field' (Field Coordination) | 'intelligence' (ATLAS AI)
+  const [activeTab, setActiveTab] = useState<'alerts' | 'field' | 'intelligence'>('alerts');
   const [alertFilter, setAlertFilter] = useState<'All' | 'Incidents' | 'Roads' | 'Weather'>('All');
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
+  const [activeCommsAlertId, setActiveCommsAlertId] = useState<string | null>(null);
+  const [adminChatInput, setAdminChatInput] = useState('');
+  const [adminChatSending, setAdminChatSending] = useState(false);
+
+  // Poll field alerts every 3.5s
+  useEffect(() => {
+    fetchFieldAlerts();
+    const timer = setInterval(() => {
+      fetchFieldAlerts();
+      if (activeCommsAlertId) {
+        const activeAlert = fieldAlerts.find(a => a.id === activeCommsAlertId);
+        const mId = activeAlert?.active_assignment_id || activeAlert?.original_incident_id || activeCommsAlertId;
+        fetchMissionMessages(mId);
+      }
+    }, 3500);
+    return () => clearInterval(timer);
+  }, [fetchFieldAlerts, fetchMissionMessages, activeCommsAlertId]);
+
+  const unreviewedFieldAlerts = fieldAlerts.filter(a => a.status === 'Reported').length;
 
   // Active incidents sorted by priority score descending
   const activeIncidents = [...(state?.incidents || [])]
@@ -179,11 +207,11 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
 
   return (
     <aside className="w-[340px] h-full bg-white border-l border-[#E5E9ED] flex flex-col select-none z-10 shadow-[-1px_0_4px_rgba(0,0,0,0.02)]">
-      {/* TWO PRIMARY COMPACT TABS: Alerts | ATLAS AI */}
-      <div className="p-2 border-b border-[#E5E9ED] bg-[#F5F6F7]/80 flex items-center gap-1.5">
+      {/* THREE COMPACT TABS: Alerts | Field | ATLAS AI */}
+      <div className="p-2 border-b border-[#E5E9ED] bg-[#F5F6F7]/80 flex items-center gap-1">
         <button
           onClick={() => setActiveTab('alerts')}
-          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+          className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
             activeTab === 'alerts'
               ? 'bg-white text-[#18212B] shadow-sm border border-[#E5E9ED]'
               : 'text-[#718096] hover:text-[#18212B]'
@@ -191,21 +219,42 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
         >
           <Radio className={`w-3.5 h-3.5 ${activeTab === 'alerts' ? 'text-[#F26A38]' : 'text-[#718096]'}`} />
           <span>Alerts</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#E5E9ED] text-[#718096]">
+          <span className="text-[10px] font-mono px-1 rounded-full bg-[#E5E9ED] text-[#718096]">
             {filteredAlerts.length}
           </span>
         </button>
 
         <button
+          onClick={() => setActiveTab('field')}
+          className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition relative ${
+            activeTab === 'field'
+              ? 'bg-white text-[#DC3C3C] shadow-sm border border-[#E5E9ED]'
+              : 'text-[#718096] hover:text-[#18212B]'
+          }`}
+        >
+          <Siren className={`w-3.5 h-3.5 ${activeTab === 'field' ? 'text-[#DC3C3C]' : 'text-[#718096]'}`} />
+          <span>Field</span>
+          {unreviewedFieldAlerts > 0 ? (
+            <span className="text-[10px] font-mono px-1.5 rounded-full bg-[#DC3C3C] text-white animate-pulse">
+              {unreviewedFieldAlerts}
+            </span>
+          ) : (
+            <span className="text-[10px] font-mono px-1 rounded-full bg-[#E5E9ED] text-[#718096]">
+              {fieldAlerts.length}
+            </span>
+          )}
+        </button>
+
+        <button
           onClick={() => setActiveTab('intelligence')}
-          className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+          className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
             activeTab === 'intelligence'
               ? 'bg-white text-[#F26A38] shadow-sm border border-[#E5E9ED]'
               : 'text-[#718096] hover:text-[#18212B]'
           }`}
         >
           <Sparkles className={`w-3.5 h-3.5 ${activeTab === 'intelligence' ? 'text-[#F26A38]' : 'text-[#718096]'}`} />
-          <span>ATLAS AI</span>
+          <span>AI</span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#27966B]" />
         </button>
       </div>
@@ -294,7 +343,213 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
         </div>
       )}
 
-      {/* --- TAB 2: ATLAS AI INTELLIGENCE & DECISION-SUPPORT LAYER --- */}
+      {/* --- TAB 2: FIELD-TO-COMMAND COORDINATION --- */}
+      {activeTab === 'field' && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {decisionFeedback && (
+            <div className="m-3 mb-0 p-2 rounded bg-[#27966B]/10 border border-[#27966B]/30 text-[11px] text-[#27966B] font-medium flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>{decisionFeedback}</span>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+            {fieldAlerts.length === 0 ? (
+              <div className="p-6 text-center text-xs text-[#718096]">
+                No field-discovered emergencies reported yet.
+              </div>
+            ) : (
+              fieldAlerts.map(alert => {
+                const isCommsOpen = activeCommsAlertId === alert.id;
+                const missionId = alert.active_assignment_id || alert.original_incident_id || alert.id;
+                return (
+                  <div
+                    key={alert.id}
+                    className="p-3 rounded-lg border border-[#E5E9ED] bg-white shadow-xs space-y-2 border-l-4 border-l-[#DC3C3C]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-[#18212B]">
+                        {alert.emergency_type}
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${
+                        alert.status === 'Combined' ? 'bg-emerald-100 text-emerald-700' :
+                        alert.status === 'Separate Unit Assigned' ? 'bg-sky-100 text-sky-700' :
+                        alert.status === 'Acknowledged' ? 'bg-amber-100 text-amber-700' :
+                        'bg-red-100 text-red-700'
+                      }`}>
+                        {alert.status}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] font-mono text-[#718096] flex items-center justify-between">
+                      <span>From: <b className="text-[#18212B]">{alert.rescuer_name} ({alert.rescuer_id})</b></span>
+                      <span>New: <b className="text-[#F26A38]">{alert.new_incident_id}</b></span>
+                    </div>
+
+                    <p className="text-xs text-[#18212B] leading-snug">{alert.description}</p>
+
+                    <div className="flex flex-wrap gap-1.5 text-[10px] font-mono text-[#718096]">
+                      <span className="px-1.5 py-0.5 bg-[#F5F6F7] rounded">Affected: {alert.people_affected}</span>
+                      {alert.casualties > 0 && (
+                        <span className="px-1.5 py-0.5 bg-red-50 text-[#DC3C3C] rounded font-bold">Casualties: {alert.casualties}</span>
+                      )}
+                      {alert.requires_rescue && (
+                        <span className="px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded">Rescue Req</span>
+                      )}
+                    </div>
+
+                    {/* Command Decision Buttons */}
+                    <div className="grid grid-cols-3 gap-1 pt-1">
+                      <button
+                        onClick={async () => {
+                          await updateFieldAlertDecision(alert.id, {
+                            status: 'Acknowledged',
+                            command_decision: 'Field alert acknowledged by Command Center. Assessing dispatch options.',
+                            decision_reason: 'Command review initiated'
+                          });
+                          setDecisionFeedback(`Acknowledged ${alert.id}`);
+                          setTimeout(() => setDecisionFeedback(null), 3500);
+                        }}
+                        className="py-1.5 px-1.5 rounded bg-[#F5F6F7] hover:bg-amber-50 text-[#18212B] text-[10px] font-semibold border border-[#E5E9ED] transition"
+                      >
+                        Acknowledge
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await updateFieldAlertDecision(alert.id, {
+                            status: 'Combined',
+                            command_decision: `Proceed to ${alert.new_incident_id} as combined secondary stop after securing current perimeter.`,
+                            decision_reason: 'Proximity within active unit corridor'
+                          });
+                          setDecisionFeedback(`Combined mission ordered for ${alert.rescuer_id}`);
+                          setTimeout(() => setDecisionFeedback(null), 3500);
+                        }}
+                        className="py-1.5 px-1.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-semibold border border-emerald-200 transition"
+                      >
+                        Combine
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await updateFieldAlertDecision(alert.id, {
+                            status: 'Separate Unit Assigned',
+                            command_decision: `Stay on original incident ${alert.original_incident_id}. Separate unit dispatched to ${alert.new_incident_id}.`,
+                            decision_reason: 'Parallel dispatch required'
+                          });
+                          if (alert.new_incident_id) {
+                            setSelectedIncident(alert.new_incident_id);
+                          }
+                          setDecisionFeedback(`Separate unit dispatch flagged for ${alert.new_incident_id}`);
+                          setTimeout(() => setDecisionFeedback(null), 3500);
+                        }}
+                        className="py-1.5 px-1.5 rounded bg-sky-50 hover:bg-sky-100 text-sky-800 text-[10px] font-semibold border border-sky-200 transition"
+                      >
+                        Separate Unit
+                      </button>
+                    </div>
+
+                    {/* Focus Map & Open Comms Bar */}
+                    <div className="flex items-center justify-between pt-1.5 border-t border-[#E5E9ED]">
+                      <button
+                        onClick={() => {
+                          if (alert.new_incident_id) setSelectedIncident(alert.new_incident_id);
+                          if (onSelectEntity && alert.latitude && alert.longitude) {
+                            onSelectEntity('incident', alert.new_incident_id || '', [alert.latitude, alert.longitude]);
+                          }
+                        }}
+                        className="text-[10px] font-semibold text-[#F26A38] hover:underline flex items-center gap-1"
+                      >
+                        <MapPin className="w-3 h-3" /> Focus Map
+                      </button>
+
+                      <button
+                        onClick={async () => {
+                          if (isCommsOpen) {
+                            setActiveCommsAlertId(null);
+                          } else {
+                            setActiveCommsAlertId(alert.id);
+                            await fetchMissionMessages(missionId);
+                          }
+                        }}
+                        className="text-[10px] font-bold text-[#18212B] bg-[#F5F6F7] hover:bg-[#E5E9ED] px-2 py-1 rounded flex items-center gap-1"
+                      >
+                        <MessageSquare className="w-3 h-3 text-[#F26A38]" />
+                        <span>{isCommsOpen ? 'Close Comms' : 'Open Comms'}</span>
+                      </button>
+                    </div>
+
+                    {/* Inline Mission Comms Drawer */}
+                    {isCommsOpen && (
+                      <div className="mt-2 pt-2 border-t border-[#E5E9ED] space-y-2 bg-[#F8FAFC] p-2 rounded-md">
+                        <div className="max-h-40 overflow-y-auto space-y-1.5">
+                          {missionMessages.length === 0 ? (
+                            <div className="text-[10px] text-[#718096] text-center py-2">No messages yet.</div>
+                          ) : (
+                            missionMessages.map(m => (
+                              <div
+                                key={m.id}
+                                className={`p-1.5 rounded text-[10px] border ${
+                                  m.sender_role === 'admin'
+                                    ? 'bg-white border-[#F26A38]/40 text-[#18212B]'
+                                    : 'bg-[#18212B] text-white border-[#18212B]'
+                                }`}
+                              >
+                                <div className="flex justify-between font-bold text-[9px] mb-0.5">
+                                  <span className={m.sender_role === 'admin' ? 'text-[#F26A38]' : 'text-emerald-400'}>
+                                    {m.sender_name}
+                                  </span>
+                                  {m.sender_role === 'admin' && (
+                                    <span className={m.acknowledged ? 'text-[#27966B]' : 'text-amber-600'}>
+                                      {m.acknowledged ? '✓ Acked' : 'Pending Ack'}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>{m.content}</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={adminChatInput}
+                            onChange={(e) => setAdminChatInput(e.target.value)}
+                            placeholder="Send instruction to unit..."
+                            className="flex-1 px-2 py-1.5 rounded border border-[#E5E9ED] bg-white text-[11px]"
+                          />
+                          <button
+                            disabled={adminChatSending || !adminChatInput.trim()}
+                            onClick={async () => {
+                              if (!adminChatInput.trim()) return;
+                              setAdminChatSending(true);
+                              await sendMissionMessage(missionId, {
+                                sender_id: 'SEOC-COMMAND',
+                                sender_name: 'Command Center',
+                                sender_role: 'admin',
+                                message_type: 'instruction',
+                                content: adminChatInput.trim(),
+                                priority: 'Urgent',
+                                field_alert_id: alert.id
+                              });
+                              setAdminChatInput('');
+                              setAdminChatSending(false);
+                            }}
+                            className="px-2.5 py-1.5 rounded bg-[#F26A38] text-white text-[10px] font-bold"
+                          >
+                            Send
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB 3: ATLAS AI INTELLIGENCE & DECISION-SUPPORT LAYER --- */}
       {activeTab === 'intelligence' && (
         <div className="flex-1 flex flex-col overflow-y-auto p-3 space-y-3.5 text-xs text-[#18212B]">
           {/* Operator Action Confirmation Banner */}

@@ -101,7 +101,62 @@ export interface IncomingPatient {
   estimated_arrival_minutes: number;
   estimated_patient_count: number;
   patient_condition: string;
-  status: 'En Route' | 'Arrived' | 'Admitted';
+  severity?: string;
+  treatment_required?: string;
+  status: 'En Route' | 'Arrived' | 'Admitted' | 'Declined' | 'Accepted';
+}
+
+export interface Shelter {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  address: string;
+  capacity: number;
+  current_occupancy: number;
+  operational_status: 'Open' | 'Full' | 'Closed';
+  supplies_status: 'Adequate' | 'Low' | 'Critical';
+  updated_at?: string;
+}
+
+export interface FieldAlert {
+  id: string;
+  rescuer_id: string;
+  rescuer_name: string;
+  active_assignment_id?: string;
+  original_incident_id?: string;
+  new_incident_id?: string;
+  emergency_type: string;
+  description: string;
+  latitude?: number;
+  longitude?: number;
+  location_description?: string;
+  people_affected: number;
+  casualties: number;
+  requires_rescue: boolean;
+  requires_medical: boolean;
+  hazard_info?: string;
+  urgency: 'Critical' | 'High' | 'Medium' | 'Low';
+  status: 'Reported' | 'Acknowledged' | 'Combined' | 'Separate Unit Assigned' | 'Dismissed';
+  command_decision?: string;
+  decision_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MissionMessage {
+  id: string;
+  mission_id: string;
+  field_alert_id?: string;
+  sender_id: string;
+  sender_name: string;
+  sender_role: 'rescuer' | 'admin' | 'system';
+  message_type: 'chat' | 'instruction' | 'alert' | 'acknowledgment';
+  content: string;
+  priority: 'Normal' | 'Priority' | 'Urgent';
+  acknowledged: boolean;
+  acknowledged_at?: string;
+  created_at: string;
 }
 
 export interface ScenarioMetrics {
@@ -128,5 +183,6 @@ export interface ScenarioState {
   hazards: HazardZone[];
   alerts: Alert[];
   incoming_patients: IncomingPatient[];
+  shelters?: Shelter[];
   activity_logs: ActivityLog[];
 }

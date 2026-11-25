@@ -25,7 +25,7 @@ import { useAtlasStore } from '../store/atlasStore';
 import { useAuthStore } from '../store/authStore';
 
 export const HospitalPortal: React.FC = () => {
-  const { state, updateHospitalCapacity } = useAtlasStore();
+  const { state, updateHospitalCapacity, updateReferralStatus } = useAtlasStore();
   const { userName, logout } = useAuthStore();
 
   const [activeNav, setActiveNav] = useState('Overview');
@@ -119,13 +119,27 @@ export const HospitalPortal: React.FC = () => {
 
   // Handle Accept Referral
   const handleAcceptCase = async (caseItem: any) => {
-    if (availBeds > 0) {
-      await updateHospitalCapacity(primaryHosp.id, {
-        available_beds: Math.max(0, availBeds - (caseItem.estimated_patient_count || 1))
-      });
-      setFeedbackNotice(`Referral ${caseItem.incident_id} accepted. ${caseItem.estimated_patient_count || 1} bed(s) reserved.`);
-    } else {
-      setFeedbackNotice(`Warning: Zero available beds. Patient referral logged under emergency overflow.`);
+    try {
+      await updateReferralStatus(caseItem.id, 'Accepted');
+      setFeedbackNotice(`Referral ${caseItem.incident_id || caseItem.id} accepted. Assigned to Emergency Ward.`);
+    } catch (e) {
+      if (availBeds > 0) {
+        await updateHospitalCapacity(primaryHosp.id, {
+          available_beds: Math.max(0, availBeds - (caseItem.estimated_patient_count || 1))
+        });
+      }
+      setFeedbackNotice(`Referral ${caseItem.incident_id || caseItem.id} accepted.`);
+    }
+    setTimeout(() => setFeedbackNotice(null), 4500);
+  };
+
+  // Handle Decline Referral
+  const handleDeclineCase = async (caseItem: any) => {
+    try {
+      await updateReferralStatus(caseItem.id, 'Declined');
+      setFeedbackNotice(`Referral ${caseItem.incident_id || caseItem.id} declined and returned to Dispatch.`);
+    } catch (e) {
+      setFeedbackNotice(`Referral declined.`);
     }
     setTimeout(() => setFeedbackNotice(null), 4500);
   };
@@ -725,6 +739,15 @@ export const HospitalPortal: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 pt-2 border-t border-[#E2E8F0]">
+              <button
+                onClick={() => {
+                  handleDeclineCase(selectedCaseModal);
+                  setSelectedCaseModal(null);
+                }}
+                className="py-2 px-3 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 transition"
+              >
+                Decline
+              </button>
               <button
                 onClick={() => setSelectedCaseModal(null)}
                 className="flex-1 py-2 rounded-xl text-xs font-semibold text-[#64748B] bg-[#F1F5F9] hover:bg-[#E2E8F0] transition"
