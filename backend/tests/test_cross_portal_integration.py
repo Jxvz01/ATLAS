@@ -146,3 +146,63 @@ def test_cross_portal_hospital_capacity_and_referral():
     # 3. Activity Event Logged
     recent_logs = [l["message"] for l in state["activity_logs"]]
     assert any("HOSPITAL_CAPACITY_CHANGE" in l or "Beds Available=35" in l for l in recent_logs)
+
+def test_cross_portal_medical_referral_and_shelter_sync():
+    # 1. Create a medical referral from field to hospital
+    ref_resp = client.post("/api/referrals", json={
+        "incident_id": "INC-101",
+        "hospital_id": "HOSP-01",
+        "resource_id": "R-04",
+        "estimated_arrival_minutes": 10,
+        "estimated_patient_count": 2,
+        "patient_condition": "Hypothermia and water inhalation",
+        "severity": "Critical",
+        "treatment_required": "Trauma stabilization & O2"
+    })
+    assert ref_resp.status_code == 200
+    ref_data = ref_resp.json()
+    ref_id = ref_data["id"]
+    assert ref_data["status"] == "En Route"
+    assert ref_data["estimated_patient_count"] == 2
+
+    # 2. Verify referral is in SQLite
+    sqlite_ref = db_store.get_referral(ref_id)
+    assert sqlite_ref is not None
+    assert sqlite_ref.hospital_id == "HOSP-01"
+    assert sqlite_ref.patient_condition == "Hypothermia and water inhalation"
+
+    # 3. Hospital Accepts Referral
+    initial_beds = db.hospitals["HOSP-01"].available_beds
+    update_ref_resp = client.patch(f"/api/referrals/{ref_id}", json={
+        "status": "Accepted"
+    })
+    assert update_ref_resp.status_code == 200
+    assert update_ref_resp.json()["status"] == "Accepted"
+
+    # Available beds should decrease by patient count (2)
+    assert db.hospitals["HOSP-01"].available_beds == initial_beds - 2
+
+    # Verify SQLite updated
+    updated_sqlite_ref = db_store.get_referral(ref_id)
+    assert updated_sqlite_ref.status == "Accepted"
+
+    # 4. Shelter capacity and occupancy updates
+    shelters_resp = client.get("/api/shelters")
+    assert shelters_resp.status_code == 200
+    shelters = shelters_resp.json()
+    assert len(shelters) >= 1
+    sh_id = shelters[0]["id"]
+
+    sh_update = client.patch(f"/api/shelters/{sh_id}", json={
+        "current_occupancy": 150,
+        "operational_status": "Open",
+        "supplies_status": "Adequate"
+    })
+    assert sh_update.status_code == 200
+    assert sh_update.json()["current_occupancy"] == 150
+
+    # Verify scenario state includes shelters
+    state_resp = client.get("/api/scenario/state").json()
+    assert "shelters" in state_resp
+    matching_sh = next(s for s in state_resp["shelters"] if s["id"] == sh_id)
+    assert matching_sh["current_occupancy"] == 150
