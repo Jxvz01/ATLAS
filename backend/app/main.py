@@ -118,6 +118,7 @@ def get_scenario_state():
         "hazards": db.hazards,
         "alerts": db.alerts,
         "incoming_patients": list(db.incoming_patients.values()),
+        "shelters": list(db.shelters.values()),
         "activity_logs": db.activity_logs[:50]
     }
 
@@ -622,3 +623,401 @@ def create_alert(alert: Alert):
     db.alerts.insert(0, alert)
     db.log_event("BROADCAST_ALERT", f"Public emergency broadcast issued: {alert.title}", alert.id)
     return alert
+
+# --- Medical Referrals Endpoints ---
+
+class CreateReferralRequest(BaseModel):
+    incident_id: str
+    hospital_id: str
+    resource_id: str
+    estimated_arrival_minutes: int = 15
+    estimated_patient_count: int = 1
+    patient_condition: str
+    severity: str = "Urgent"
+    treatment_required: Optional[str] = None
+
+class UpdateReferralRequest(BaseModel):
+    status: str # En Route, Arrived, Admitted, Declined
+    estimated_arrival_minutes: Optional[int] = None
+
+@app.get("/api/referrals")
+def list_referrals(hospital_id: Optional[str] = None):
+    if hospital_id:
+        return [p for p in db.incoming_patients.values() if p.hospital_id == hospital_id]
+    return list(db.incoming_patients.values())
+
+@app.post("/api/referrals")
+def create_referral(req: CreateReferralRequest):
+    ref_id = f"CASE-{len(db.incoming_patients) + 101}"
+    patient = IncomingPatient(
+        id=ref_id,
+        incident_id=req.incident_id,
+        hospital_id=req.hospital_id,
+        resource_id=req.resource_id,
+        estimated_arrival_minutes=req.estimated_arrival_minutes,
+        estimated_patient_count=req.estimated_patient_count,
+        patient_condition=req.patient_condition,
+        severity=req.severity,
+        treatment_required=req.treatment_required,
+        status="En Route"
+    )
+    db.incoming_patients[ref_id] = patient
+    
+    hosp_name = db.hospitals[req.hospital_id].name if req.hospital_id in db.hospitals else req.hospital_id
+    db.log_event(
+        "HOSPITAL_REFERRAL_CREATED",
+        f"Medical referral {ref_id} created for {req.estimated_patient_count} patient(s) -> {hosp_name} (ETA: {req.estimated_arrival_minutes} min).",
+        ref_id
+    )
+
+    # Persist into SQLite
+    try:
+        from app.db.sqlite_store import db_store
+        from app.domain.models import MedicalReferralRecord, IncidentEvent, IncidentActor, utc_now_iso
+        from app.domain.enums import EventType, ActorRole
+        rec = MedicalReferralRecord(
+            id=ref_id,
+            incident_id=req.incident_id,
+            hospital_id=req.hospital_id,
+            resource_id=req.resource_id,
+            estimated_arrival_minutes=req.estimated_arrival_minutes,
+            estimated_patient_count=req.estimated_patient_count,
+            patient_condition=req.patient_condition,
+            severity=req.severity,
+            treatment_required=req.treatment_required,
+            status="En Route"
+        )
+        db_store.insert_referral(rec)
+        db_store.record_event(IncidentEvent(
+            event_type=EventType.HOSPITAL_REFERRAL_CREATED,
+            entity_id=req.incident_id,
+            actor=IncidentActor(id=req.resource_id, name="Field Unit", role=ActorRole.RESCUER),
+            previous_state=None,
+            new_state="En Route",
+            reason=f"Patient transport initiated to {hosp_name}",
+            context={"referral_id": ref_id, "hospital_id": req.hospital_id, "patients": req.estimated_patient_count}
+        ))
+    except Exception as e:
+        print(f"Warning: Medical referral SQLite persist failed: {e}")
+
+    return patient
+
+@app.patch("/api/referrals/{referral_id}")
+def update_referral(referral_id: str, req: UpdateReferralRequest):
+    if referral_id not in db.incoming_patients:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    
+    ref = db.incoming_patients[referral_id]
+    old_status = ref.status
+    ref.status = req.status
+    if req.estimated_arrival_minutes is not None:
+        ref.estimated_arrival_minutes = req.estimated_arrival_minutes
+
+    # If referral admitted or accepted, adjust hospital available beds
+    if req.status in ["Admitted", "Accepted"]:
+        hosp = db.hospitals.get(ref.hospital_id)
+        if hosp:
+            hosp.available_beds = max(0, hosp.available_beds - ref.estimated_patient_count)
+            db.log_event(
+                "HOSPITAL_REFERRAL_ACCEPTED",
+                f"Referral {referral_id} {req.status}. {ref.estimated_patient_count} bed(s) allocated at {hosp.name}. Remaining beds: {hosp.available_beds}.",
+                referral_id
+            )
+    elif req.status == "Declined":
+        db.log_event(
+            "HOSPITAL_REFERRAL_DECLINED",
+            f"Referral {referral_id} declined by hospital {ref.hospital_id}.",
+            referral_id
+        )
+
+    # Persist update in SQLite
+    try:
+        from app.db.sqlite_store import db_store
+        from app.domain.models import IncidentEvent, IncidentActor, utc_now_iso
+        from app.domain.enums import EventType, ActorRole
+        persisted = db_store.get_referral(referral_id)
+        if persisted:
+            persisted.status = req.status
+            if req.estimated_arrival_minutes is not None:
+                persisted.estimated_arrival_minutes = req.estimated_arrival_minutes
+            persisted.updated_at = utc_now_iso()
+            db_store.update_referral(persisted)
+            
+            event_type = EventType.HOSPITAL_REFERRAL_ACCEPTED if req.status in ["Admitted", "Accepted"] else (
+                EventType.HOSPITAL_REFERRAL_DECLINED if req.status == "Declined" else EventType.STATUS_TRANSITION
+            )
+            db_store.record_event(IncidentEvent(
+                event_type=event_type,
+                entity_id=ref.incident_id,
+                actor=IncidentActor(id=ref.hospital_id, name="Hospital Desk", role=ActorRole.HOSPITAL_OPERATOR),
+                previous_state=old_status,
+                new_state=req.status,
+                reason=f"Hospital updated patient referral to {req.status}",
+                context={"referral_id": referral_id}
+            ))
+    except Exception as e:
+        print(f"Warning: Medical referral update SQLite persist failed: {e}")
+
+    return ref
+
+# --- Shelters Endpoints ---
+
+class UpdateShelterRequest(BaseModel):
+    current_occupancy: Optional[int] = None
+    operational_status: Optional[str] = None
+    supplies_status: Optional[str] = None
+
+@app.get("/api/shelters")
+def list_shelters():
+    return list(db.shelters.values())
+
+@app.patch("/api/shelters/{shelter_id}")
+def update_shelter(shelter_id: str, req: UpdateShelterRequest):
+    if shelter_id not in db.shelters:
+        raise HTTPException(status_code=404, detail="Shelter not found")
+    
+    sh = db.shelters[shelter_id]
+    if req.current_occupancy is not None:
+        sh.current_occupancy = max(0, min(sh.capacity, req.current_occupancy))
+    if req.operational_status is not None:
+        sh.operational_status = req.operational_status
+    if req.supplies_status is not None:
+        sh.supplies_status = req.supplies_status
+    sh.updated_at = datetime.utcnow().isoformat()
+
+    db.log_event(
+        "SHELTER_CAPACITY_UPDATED",
+        f"Shelter {sh.name} capacity updated: Occupancy {sh.current_occupancy}/{sh.capacity}, Status: {sh.operational_status}.",
+        shelter_id
+    )
+
+    # Persist in SQLite
+    try:
+        from app.db.sqlite_store import db_store
+        from app.domain.models import ShelterRecord
+        rec = ShelterRecord(
+            id=sh.id,
+            name=sh.name,
+            latitude=sh.latitude,
+            longitude=sh.longitude,
+            address=sh.address,
+            capacity=sh.capacity,
+            current_occupancy=sh.current_occupancy,
+            operational_status=sh.operational_status,
+            supplies_status=sh.supplies_status,
+            updated_at=sh.updated_at
+        )
+        db_store.update_shelter(rec)
+    except Exception as e:
+        print(f"Warning: Shelter update SQLite persist failed: {e}")
+
+    return sh
+
+# --- Field Alerts & Field-to-Command Communications Endpoints ---
+
+class CreateFieldAlertRequest(BaseModel):
+    rescuer_id: str
+    rescuer_name: str
+    active_assignment_id: Optional[str] = None
+    original_incident_id: Optional[str] = None
+    emergency_type: str
+    description: str
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    location_description: Optional[str] = None
+    people_affected: int = 1
+    casualties: int = 0
+    requires_rescue: bool = False
+    requires_medical: bool = False
+    hazard_info: Optional[str] = None
+    urgency: str = "High"
+
+class UpdateFieldAlertDecisionRequest(BaseModel):
+    status: str # Acknowledged, Combined, Separate Unit Assigned, Dismissed
+    command_decision: str
+    decision_reason: Optional[str] = None
+
+class CreateMissionMessageRequest(BaseModel):
+    mission_id: Optional[str] = None
+    field_alert_id: Optional[str] = None
+    sender_id: str
+    sender_name: str
+    sender_role: str # rescuer, admin
+    content: str
+    priority: str = "Normal" # Normal, Priority, Urgent
+    message_type: str = "chat" # chat, instruction, alert, acknowledgment
+
+@app.get("/api/field-alerts")
+def list_field_alerts(rescuer_id: Optional[str] = None):
+    from app.db.postgres_store import db_store
+    return db_store.list_field_alerts(rescuer_id=rescuer_id)
+
+@app.post("/api/field-alerts")
+def create_field_alert(req: CreateFieldAlertRequest):
+    from app.db.postgres_store import db_store
+    import uuid
+    from datetime import datetime
+    from app.engine import calculate_priority_score
+
+    alert_id = f"ALT-{uuid.uuid4().hex[:6].upper()}"
+    new_inc_id = f"INC-FLD-{uuid.uuid4().hex[:4].upper()}"
+
+    # Default coordinates to original incident if rescuer omitted GPS
+    lat = req.latitude
+    lon = req.longitude
+    if (lat is None or lon is None) and req.original_incident_id and req.original_incident_id in db.incidents:
+        orig = db.incidents[req.original_incident_id]
+        lat = orig.latitude + 0.0015
+        lon = orig.longitude + 0.0015
+
+    if lat is None: lat = 12.3168
+    if lon is None: lon = 76.6496
+
+    # Create authoritative incident record for the discovered emergency
+    score, level = calculate_priority_score({
+        "severity": 4 if req.urgency == "High" else (5 if req.urgency == "Critical" else 3),
+        "urgency": 5 if req.requires_rescue else 3,
+        "affected_population": req.people_affected,
+        "vulnerability": 3
+    })
+
+    new_inc = Incident(
+        id=new_inc_id,
+        type=req.emergency_type,
+        description=f"FIELD ALERT from {req.rescuer_name}: {req.description}",
+        latitude=lat,
+        longitude=lon,
+        severity=4 if req.urgency == "High" else 3,
+        urgency=5 if req.requires_rescue else 3,
+        confidence=1.0,
+        affected_population=req.people_affected,
+        vulnerability=3,
+        priority_score=score,
+        priority_level=level,
+        status="Active",
+        source=f"Rescuer Field Alert ({req.rescuer_name})"
+    )
+    db.incidents[new_inc_id] = new_inc
+
+    alert_dict = {
+        "id": alert_id,
+        "rescuer_id": req.rescuer_id,
+        "rescuer_name": req.rescuer_name,
+        "active_assignment_id": req.active_assignment_id,
+        "original_incident_id": req.original_incident_id,
+        "new_incident_id": new_inc_id,
+        "emergency_type": req.emergency_type,
+        "description": req.description,
+        "latitude": lat,
+        "longitude": lon,
+        "location_description": req.location_description or "Discovered along response corridor",
+        "people_affected": req.people_affected,
+        "casualties": req.casualties,
+        "requires_rescue": req.requires_rescue,
+        "requires_medical": req.requires_medical,
+        "hazard_info": req.hazard_info,
+        "urgency": req.urgency,
+        "status": "Reported",
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat()
+    }
+
+    # Persist in Supabase
+    db_store.insert_field_alert(alert_dict)
+    
+    # Broadcast in operational activity log
+    db.log_event(
+        "FIELD_ALERT_REPORTED",
+        f"FIELD ALERT {alert_id}: {req.rescuer_name} reported nearby {req.emergency_type} at ({lat:.4f}, {lon:.4f}). New Incident {new_inc_id} created.",
+        alert_id
+    )
+
+    # Automatically generate initial system comm message in mission thread
+    mission_id = req.active_assignment_id or req.original_incident_id or new_inc_id
+    db_store.insert_mission_message({
+        "id": f"MSG-{uuid.uuid4().hex[:6].upper()}",
+        "mission_id": mission_id,
+        "field_alert_id": alert_id,
+        "sender_id": req.rescuer_id,
+        "sender_name": req.rescuer_name,
+        "sender_role": "rescuer",
+        "message_type": "alert",
+        "content": f"URGENT FIELD DISCOVERY: {req.emergency_type} - {req.description} ({req.people_affected} affected). Requesting Command instructions.",
+        "priority": "Urgent",
+        "created_at": datetime.utcnow().isoformat()
+    })
+
+    return {"alert": alert_dict, "incident": new_inc.dict()}
+
+@app.patch("/api/field-alerts/{alert_id}/decision")
+def update_field_alert_decision(alert_id: str, req: UpdateFieldAlertDecisionRequest):
+    from app.db.postgres_store import db_store
+    import uuid
+    from datetime import datetime
+
+    res = db_store.update_field_alert(alert_id, {
+        "status": req.status,
+        "command_decision": req.command_decision,
+        "decision_reason": req.decision_reason
+    })
+    if not res:
+        raise HTTPException(status_code=404, detail="Field alert not found")
+
+    db.log_event(
+        "COMMAND_DECISION_RECORDED",
+        f"COMMAND DECISION on {alert_id}: {req.status} - {req.command_decision}",
+        alert_id
+    )
+
+    # Transmit formal Command instruction message into mission communications
+    target_mission_id = res.get("active_assignment_id") or res.get("original_incident_id") or alert_id
+    db_store.insert_mission_message({
+        "id": f"MSG-{uuid.uuid4().hex[:6].upper()}",
+        "mission_id": target_mission_id,
+        "field_alert_id": alert_id,
+        "sender_id": "SEOC-COMMAND",
+        "sender_name": "Command Center Dispatch",
+        "sender_role": "admin",
+        "message_type": "instruction",
+        "content": f"COMMAND INSTRUCTION [{req.status}]: {req.command_decision}. {req.decision_reason or ''}",
+        "priority": "Urgent",
+        "created_at": datetime.utcnow().isoformat()
+    })
+
+    return res
+
+@app.get("/api/missions/{mission_id}/messages")
+def get_mission_messages(mission_id: str):
+    from app.db.postgres_store import db_store
+    return db_store.list_mission_messages(mission_id=mission_id)
+
+@app.post("/api/missions/{mission_id}/messages")
+def send_mission_message(mission_id: str, req: CreateMissionMessageRequest):
+    from app.db.postgres_store import db_store
+    import uuid
+    from datetime import datetime
+
+    msg_id = f"MSG-{uuid.uuid4().hex[:6].upper()}"
+    msg_dict = {
+        "id": msg_id,
+        "mission_id": mission_id,
+        "field_alert_id": req.field_alert_id,
+        "sender_id": req.sender_id,
+        "sender_name": req.sender_name,
+        "sender_role": req.sender_role,
+        "message_type": req.message_type,
+        "content": req.content,
+        "priority": req.priority,
+        "acknowledged": False,
+        "created_at": datetime.utcnow().isoformat()
+    }
+    db_store.insert_mission_message(msg_dict)
+    return msg_dict
+
+@app.post("/api/messages/{message_id}/acknowledge")
+def acknowledge_message(message_id: str):
+    from app.db.postgres_store import db_store
+    res = db_store.acknowledge_mission_message(message_id)
+    if not res:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return res

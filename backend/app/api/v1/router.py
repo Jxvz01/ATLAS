@@ -26,11 +26,13 @@ router = APIRouter(prefix="/api/v1", tags=["Incident Engine V1"])
 
 @router.get("/health")
 def get_health():
+    from app.db.session import engine
+    storage_name = "Supabase PostgreSQL + PostGIS" if engine.dialect.name == "postgresql" else "SQLite Persistent WAL"
     return {
         "status": "healthy",
         "service": "ATLAS Incident Engine",
         "version": "1.0.0",
-        "storage": "SQLite Persistent WAL",
+        "storage": storage_name,
         "timestamp": utc_now_iso()
     }
 

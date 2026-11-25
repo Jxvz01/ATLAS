@@ -228,5 +228,40 @@
       "target": "Responders & Public",
       "created_at": "2026-11-22T08:20:00Z"
     }
+  ],
+  "shelters": [
+    {
+      "id": "SHL-01",
+      "name": "Maharaja's College Pavilion Relief Centre",
+      "latitude": 12.3082,
+      "longitude": 76.6432,
+      "address": "College Road, Mysuru",
+      "capacity": 300,
+      "current_occupancy": 115,
+      "operational_status": "Open",
+      "supplies_status": "Adequate"
+    },
+    {
+      "id": "SHL-02",
+      "name": "Chamundi Vihar Indoor Stadium Camp",
+      "latitude": 12.3125,
+      "longitude": 76.6710,
+      "address": "Nazarbad Main Rd, Mysuru",
+      "capacity": 500,
+      "current_occupancy": 210,
+      "operational_status": "Open",
+      "supplies_status": "Adequate"
+    },
+    {
+      "id": "SHL-03",
+      "name": "VVCE Campus Disaster Shelter",
+      "latitude": 12.3360,
+      "longitude": 76.6195,
+      "address": "Gokulam 3rd Stage, Mysuru",
+      "capacity": 250,
+      "current_occupancy": 95,
+      "operational_status": "Open",
+      "supplies_status": "Adequate"
+    }
   ]
 }
