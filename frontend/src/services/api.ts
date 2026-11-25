@@ -3,6 +3,9 @@ import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, 
 
 const API_BASE = 'http://localhost:8000/api';
 
+// Configure resilient HTTP defaults for degraded network conditions
+axios.defaults.timeout = 12000;
+
 export const api = {
   getScenarioState: async (): Promise<ScenarioState> => {
     const res = await axios.get(`${API_BASE}/scenario/state`);
@@ -218,6 +221,60 @@ export const api = {
 
   simResetScenario: async () => {
     const res = await axios.post(`${API_BASE}/simulation/reset`);
+    return res.data;
+  },
+
+  // ATLAS 2.0: Groq AI Intelligence Layer (Advisory Only)
+  getAiStatus: async () => {
+    const res = await axios.get(`${API_BASE}/ai/status`);
+    return res.data;
+  },
+
+  aiAssessIncident: async (incidentId: string) => {
+    const res = await axios.post(`${API_BASE}/ai/assess-incident/${incidentId}`, {}, { timeout: 20000 });
+    return res.data;
+  },
+
+  aiSummarizeIncident: async (incidentId: string) => {
+    const res = await axios.post(`${API_BASE}/ai/summarize-incident/${incidentId}`, {}, { timeout: 20000 });
+    return res.data;
+  },
+
+  aiOperationalBriefing: async () => {
+    const res = await axios.post(`${API_BASE}/ai/briefing`, {}, { timeout: 20000 });
+    return res.data;
+  },
+
+  aiAnalyzeFieldReport: async (data: {
+    incident_id: string;
+    resource_id?: string;
+    casualties: number;
+    assessment: string;
+    road_condition?: string;
+    notes?: string;
+  }) => {
+    const res = await axios.post(`${API_BASE}/ai/analyze-field-report`, data, { timeout: 20000 });
+    return res.data;
+  },
+
+  aiOperationalQuery: async (question: string) => {
+    const res = await axios.post(`${API_BASE}/ai/query`, { question }, { timeout: 20000 });
+    return res.data;
+  },
+
+  // ATLAS 2.0: Open-Source Geographic, Satellite Imagery & Hazard Data
+  getOpenDataOverview: async (includeOsm: boolean = false) => {
+    const res = await axios.get(`${API_BASE}/open-data/overview`, { params: { include_osm: includeOsm }, timeout: 12000 });
+    return res.data;
+  },
+
+  getOsmInfrastructure: async () => {
+    const res = await axios.get(`${API_BASE}/open-data/osm-infrastructure`, { timeout: 12000 });
+    return res.data;
+  },
+
+  getImageryLayers: async () => {
+    const res = await axios.get(`${API_BASE}/open-data/imagery-layers`);
     return res.data;
   }
 };

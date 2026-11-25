@@ -20,9 +20,24 @@ import {
 } from 'lucide-react';
 
 export const AdminPortal: React.FC = () => {
-  const { state } = useAtlasStore();
+  const { state, fieldAlerts } = useAtlasStore();
   const [currentTab, setCurrentTab] = useState<string>('command-center');
   const [modalOpen, setModalOpen] = useState(false);
+
+  // Derived operational metrics from authoritative backend state
+  const incidents = state?.incidents || [];
+  const resources = state?.resources || [];
+  const hospitals = state?.hospitals || [];
+  const referrals = state?.incoming_patients || [];
+
+  const activeIncidentsCount = incidents.filter(i => i.status !== 'Resolved').length;
+  const criticalCount = incidents.filter(i => i.priority_level === 'Critical' && i.status !== 'Resolved').length;
+  const unassignedCount = incidents.filter(i => i.status === 'Active').length;
+  const availableUnitsCount = resources.filter(r => r.status === 'Available').length;
+  const dispatchedUnitsCount = resources.filter(r => r.status !== 'Available').length;
+  const totalAvailBeds = hospitals.reduce((acc, h) => acc + (h.available_beds || 0), 0);
+  const pendingFieldAlertsCount = fieldAlerts.filter(a => a.status === 'Reported').length;
+  const pendingReferralsCount = referrals.filter(r => r.status === 'En Route').length;
 
   const handleTabChange = (tab: string) => {
     setCurrentTab(tab);
@@ -49,6 +64,51 @@ export const AdminPortal: React.FC = () => {
     <div className="w-screen h-screen flex flex-col bg-[#F5F6F7] text-[#18212B] overflow-hidden select-none font-sans">
       {/* 1. TOP HEADER: Location, Coordinates, Time, Weather, Threat Level, Profile */}
       <AdminHeader />
+
+      {/* 1B. COMMAND OVERVIEW KPI STRIP (Live Backend Metrics) */}
+      <div className="bg-white border-b border-[#DCE2E8] px-4 py-1.5 flex items-center justify-between gap-3 overflow-x-auto text-[11px] shrink-0">
+        <div className="flex items-center gap-4 tabular-nums">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Active:</span>
+            <span className="font-bold text-[#111827]">{activeIncidentsCount}</span>
+          </div>
+          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Critical:</span>
+            <span className={`font-bold ${criticalCount > 0 ? 'text-[#DC2626]' : 'text-[#111827]'}`}>{criticalCount}</span>
+          </div>
+          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Unassigned:</span>
+            <span className={`font-bold ${unassignedCount > 0 ? 'text-[#D97706]' : 'text-[#15803D]'}`}>{unassignedCount}</span>
+          </div>
+          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Units:</span>
+            <span className="font-bold text-[#15803D]">{availableUnitsCount} Avail</span>
+            <span className="text-[#5B6777]">/</span>
+            <span className="font-bold text-[#0284C7]">{dispatchedUnitsCount} Disp</span>
+          </div>
+          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Hosp Beds:</span>
+            <span className="font-bold text-[#111827]">{totalAvailBeds} Avail</span>
+          </div>
+          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
+          <div className="flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Field Alerts:</span>
+            <span className={`font-bold ${pendingFieldAlertsCount > 0 ? 'text-[#DC2626]' : 'text-[#111827]'}`}>{pendingFieldAlertsCount} Pending</span>
+          </div>
+          <span className="h-3 w-[1px] bg-[#DCE2E8] hidden lg:block" />
+          <div className="hidden lg:flex items-center gap-1.5">
+            <span className="text-[#5B6777] font-medium">Referrals:</span>
+            <span className="font-bold text-[#0284C7]">{pendingReferralsCount} En Route</span>
+          </div>
+        </div>
+        <div className="hidden xl:block text-[10px] font-mono text-[#5B6777] uppercase tracking-wider shrink-0">
+          OBSERVE → ASSESS → COORDINATE → ACT → REASSESS
+        </div>
+      </div>
 
       {/* MAIN 3-ZONE LAYOUT */}
       <div className="flex-1 flex overflow-hidden relative">

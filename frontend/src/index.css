@@ -2,10 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --atlas-bg-canvas: #F3F5F8;
+  --atlas-bg-surface: #FFFFFF;
+  --atlas-bg-command: #0F172A;
+  --atlas-border: #DCE2E8;
+  --atlas-text-primary: #111827;
+  --atlas-text-muted: #5B6777;
+  --atlas-accent: #E85D2A;
+  --atlas-critical: #DC2626;
+  --atlas-warning: #D97706;
+  --atlas-ok: #15803D;
+  --atlas-info: #0284C7;
+}
+
 @layer base {
   body {
-    @apply bg-[#F5F6F7] text-[#18212B] antialiased font-sans m-0 p-0 overflow-x-hidden;
+    @apply bg-[#F3F5F8] text-[#111827] antialiased font-sans m-0 p-0 overflow-x-hidden;
   }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Custom scrollbar for clean minimal aesthetic */

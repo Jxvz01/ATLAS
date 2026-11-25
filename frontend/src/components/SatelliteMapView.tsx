@@ -35,21 +35,24 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
   const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Base layers: 'satellite' | 'street' | 'terrain'
-  const [baseLayer, setBaseLayer] = useState<'satellite' | 'street' | 'terrain'>('satellite');
+  // Base layers: 'satellite' | 'gibs-viirs' | 'street' | 'terrain'
+  const [baseLayer, setBaseLayer] = useState<'satellite' | 'gibs-viirs' | 'street' | 'terrain'>('satellite');
 
   // Layer visibility toggles
   const [visibleLayers, setVisibleLayers] = useState({
-    // Operational
+    // Operational (ATLAS Authoritative)
     incidents: true,
     resources: true,
     hospitals: true,
     shelters: true,
     blockages: true,
     routes: true,
-    // Intelligence
+    // Intelligence (Simulated)
     floodZones: true,
     rainfall: true,
+    // External Open-Source Observations
+    osmPois: false,
+    earthquakes: false,
   });
 
   const { 
@@ -57,11 +60,13 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
     selectedIncidentId, 
     setSelectedIncident, 
     evaluationResult,
-    fieldAlerts
+    fieldAlerts,
+    openData,
+    osmInfrastructure
   } = useAtlasStore();
 
   // Basemap style URLs
-  const getStyleForBase = (layerType: 'satellite' | 'street' | 'terrain') => {
+  const getStyleForBase = (layerType: 'satellite' | 'gibs-viirs' | 'street' | 'terrain') => {
     if (layerType === 'satellite') {
       return {
         version: 8 as const,
@@ -82,6 +87,30 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
             source: 'satellite-tiles',
             minzoom: 0,
             maxzoom: 19
+          }
+        ]
+      };
+    } else if (layerType === 'gibs-viirs') {
+      const d = new Date(Date.now() - 2 * 86400 * 1000).toISOString().slice(0, 10);
+      return {
+        version: 8 as const,
+        sources: {
+          'gibs-viirs': {
+            type: 'raster' as const,
+            tiles: [
+              `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/${d}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg`
+            ],
+            tileSize: 256,
+            attribution: 'NASA EOSDIS GIBS (VIIRS SNPP Daily)'
+          }
+        },
+        layers: [
+          {
+            id: 'gibs-viirs-layer',
+            type: 'raster' as const,
+            source: 'gibs-viirs',
+            minzoom: 0,
+            maxzoom: 9
           }
         ]
       };
@@ -109,26 +138,25 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
         ]
       };
     } else {
-      // Clean Carto Light (Terrain/Positron)
       return {
         version: 8 as const,
         sources: {
-          'carto-light': {
+          'opentopo-tiles': {
             type: 'raster' as const,
             tiles: [
-              'https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png'
+              'https://tile.opentopomap.org/{z}/{x}/{y}.png'
             ],
             tileSize: 256,
-            attribution: '© OpenStreetMap contributors, © CARTO'
+            attribution: '© OpenTopoMap (CC-BY-SA), © OpenStreetMap contributors'
           }
         },
         layers: [
           {
-            id: 'carto-light-layer',
+            id: 'opentopo-layer',
             type: 'raster' as const,
-            source: 'carto-light',
+            source: 'opentopo-tiles',
             minzoom: 0,
-            maxzoom: 19
+            maxzoom: 17
           }
         ]
       };
@@ -279,10 +307,14 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
   }, []);
 
   // Handle Base Layer switch
-  const handleBaseLayerSwitch = (layer: 'satellite' | 'street' | 'terrain') => {
+  const handleBaseLayerSwitch = (layer: 'satellite' | 'gibs-viirs' | 'street' | 'terrain') => {
     setBaseLayer(layer);
-    if (!mapRef.current) return;
-    mapRef.current.setStyle(getStyleForBase(layer) as any);
+    if (mapRef.current) {
+      mapRef.current.setStyle(getStyleForBase(layer) as any);
+      if (layer === 'gibs-viirs' && mapRef.current.getZoom() > 8.5) {
+        mapRef.current.flyTo({ zoom: 7.5, duration: 500 });
+      }
+    }
   };
 
   // Re-add sources and layers when style changes or data updates
@@ -641,7 +673,51 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
       });
     }
 
-  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts]);
+    // 6. External OpenStreetMap Emergency POIs
+    if (visibleLayers.osmPois && osmInfrastructure?.pois) {
+      osmInfrastructure.pois.forEach((poi: any) => {
+        if (!poi.latitude || !poi.longitude) return;
+        const el = document.createElement('div');
+        el.className = 'cursor-pointer';
+        el.innerHTML = `<div class="w-4 h-4 rounded bg-[#0284C7] border border-white text-white shadow flex items-center justify-center text-[8px] font-bold">OSM</div>`;
+        const popup = new maplibregl.Popup({ offset: 10, closeButton: false }).setHTML(`
+          <div class="font-sans text-xs bg-white text-[#18212B] p-2">
+            <div class="text-[9px] font-mono uppercase text-[#0284C7] font-bold">EXTERNAL • OPENSTREETMAP</div>
+            <div class="font-bold mt-0.5">${poi.name}</div>
+            <div class="text-[10px] text-[#718096] capitalize">${poi.amenity.replace('_', ' ')}</div>
+          </div>
+        `);
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([poi.longitude, poi.latitude])
+          .setPopup(popup)
+          .addTo(map);
+        markersRef.current.push(marker);
+      });
+    }
+
+    // 7. External USGS Earthquakes
+    if (visibleLayers.earthquakes && openData?.earthquakes?.events) {
+      openData.earthquakes.events.forEach((eq: any) => {
+        if (!eq.latitude || !eq.longitude) return;
+        const el = document.createElement('div');
+        el.className = 'cursor-pointer';
+        el.innerHTML = `<div class="w-5 h-5 rounded-full bg-purple-600 border-2 border-white text-white shadow flex items-center justify-center text-[9px] font-bold">M${Math.round(eq.magnitude)}</div>`;
+        const popup = new maplibregl.Popup({ offset: 10, closeButton: false }).setHTML(`
+          <div class="font-sans text-xs bg-white text-[#18212B] p-2">
+            <div class="text-[9px] font-mono uppercase text-purple-700 font-bold">EXTERNAL • USGS SEISMIC</div>
+            <div class="font-bold mt-0.5">${eq.title}</div>
+            <div class="text-[10px] text-[#718096]">Depth: ${eq.depth_km} km</div>
+          </div>
+        `);
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([eq.longitude, eq.latitude])
+          .setPopup(popup)
+          .addTo(map);
+        markersRef.current.push(marker);
+      });
+    }
+
+  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts, osmInfrastructure, openData]);
 
   const handleRecenter = () => {
     mapRef.current?.flyTo({
@@ -702,18 +778,23 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
                 <div className="text-[10px] font-mono uppercase font-bold text-[#718096] mb-1.5">
                   Base Imagery
                 </div>
-                <div className="grid grid-cols-3 gap-1">
-                  {(['satellite', 'street', 'terrain'] as const).map(b => (
+                <div className="grid grid-cols-2 gap-1">
+                  {([
+                    { id: 'satellite', label: 'Esri Static' },
+                    { id: 'gibs-viirs', label: 'NASA GIBS' },
+                    { id: 'street', label: 'OSM Street' },
+                    { id: 'terrain', label: 'OpenTopo' }
+                  ] as const).map(b => (
                     <button
-                      key={b}
-                      onClick={() => handleBaseLayerSwitch(b)}
-                      className={`px-2 py-1 rounded text-[11px] capitalize border transition ${
-                        baseLayer === b 
+                      key={b.id}
+                      onClick={() => handleBaseLayerSwitch(b.id)}
+                      className={`px-2 py-1 rounded text-[10px] border transition ${
+                        baseLayer === b.id 
                           ? 'border-[#F26A38] bg-[#F26A38]/10 text-[#F26A38] font-semibold' 
                           : 'border-[#E5E9ED] hover:bg-[#F5F6F7] text-[#18212B]'
                       }`}
                     >
-                      {b}
+                      {b.label}
                     </button>
                   ))}
                 </div>
@@ -759,7 +840,9 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
                 <div className="space-y-1 text-[11px]">
                   {[
                     { key: 'floodZones', label: 'Flood / Hazard (SIMULATED)' },
-                    { key: 'rainfall', label: 'Rainfall Inundation (SIMULATED)' }
+                    { key: 'rainfall', label: 'Rainfall Inundation (SIMULATED)' },
+                    { key: 'osmPois', label: 'OSM Emergency POIs (EXT)' },
+                    { key: 'earthquakes', label: 'USGS Seismic Feed (EXT)' }
                   ].map(item => (
                     <button
                       key={item.key}
@@ -850,14 +933,17 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
       </div>
 
       {/* BOTTOM-RIGHT METADATA FOOTER */}
-      <div className="absolute bottom-3 right-4 z-10 flex items-center gap-3 bg-white/95 backdrop-blur-sm border border-[#E5E9ED] px-3 py-1 rounded text-[10px] font-mono text-[#718096] shadow-sm">
-        <span>Scale: ~2 km</span>
-        <span>•</span>
+      <div className="absolute bottom-3 right-4 z-10 flex items-center gap-2.5 bg-white/95 backdrop-blur-sm border border-[#E5E9ED] px-3 py-1 rounded text-[10px] font-mono text-[#718096] shadow-sm">
         <span>
           {cursorCoords ? `${cursorCoords.lat.toFixed(4)}° N, ${cursorCoords.lng.toFixed(4)}° E` : '12.2958° N, 76.6394° E'}
         </span>
         <span>•</span>
-        <span className="font-semibold text-[#F26A38]">PROTOTYPE SIMULATION</span>
+        <span className="font-semibold text-[#18212B]">
+          {baseLayer === 'satellite' && 'Esri Static Imagery (Not Live)'}
+          {baseLayer === 'gibs-viirs' && `NASA GIBS VIIRS (${new Date(Date.now() - 2 * 86400 * 1000).toISOString().slice(0, 10)})`}
+          {baseLayer === 'street' && '© OpenStreetMap contributors'}
+          {baseLayer === 'terrain' && '© OpenTopoMap (CC-BY-SA)'}
+        </span>
       </div>
     </div>
   );

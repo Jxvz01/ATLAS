@@ -12,9 +12,15 @@ import {
 import { useAtlasStore } from '../store/atlasStore';
 
 export const AdminHeader: React.FC = () => {
-  const { state } = useAtlasStore();
+  const { state, openData, fetchOpenData, isOffline, syncLatencyMs, lastSyncedAt } = useAtlasStore();
   const [currentTime, setCurrentTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
+
+  useEffect(() => {
+    fetchOpenData(false);
+    const odTimer = setInterval(() => fetchOpenData(false), 300000);
+    return () => clearInterval(odTimer);
+  }, [fetchOpenData]);
 
   useEffect(() => {
     const updateDateTime = () => {
@@ -48,53 +54,71 @@ export const AdminHeader: React.FC = () => {
   }
 
   const unreadAlertsCount = (state?.alerts || []).length;
+  const weather = openData?.weather;
 
   return (
-    <header className="h-12 bg-white border-b border-[#E5E9ED] px-4 flex items-center justify-between z-20 select-none shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+    <header className="h-12 bg-[#0F172A] text-slate-100 border-b border-slate-800 px-4 flex items-center justify-between z-20 select-none">
       {/* Left: Operational Context & Coordinates */}
-      <div className="flex items-center gap-4 text-xs">
-        <div className="flex items-center gap-1.5 font-medium text-[#18212B]">
-          <MapPin className="w-3.5 h-3.5 text-[#F26A38]" />
-          <span className="font-semibold">Mysuru, Karnataka</span>
-          <span className="text-[#718096] text-[11px] font-mono">(12.2958° N, 76.6394° E)</span>
+      <div className="flex items-center gap-3.5 text-xs">
+        <div className="flex items-center gap-1.5 font-medium text-white">
+          <MapPin className="w-3.5 h-3.5 text-[#E85D2A]" />
+          <span className="font-bold tracking-tight">ATLAS COMMAND</span>
+          <span className="text-slate-400 text-[11px] font-mono hidden sm:inline">Mysuru (12.2958°N, 76.6394°E)</span>
         </div>
 
-        <span className="h-3.5 w-[1px] bg-[#E5E9ED]" />
+        <span className="h-3.5 w-[1px] bg-slate-700" />
 
         {/* Date & Time */}
-        <div className="flex items-center gap-2 text-[#718096] font-mono text-[11px]">
-          <Clock className="w-3 h-3 text-[#718096]" />
-          <span>{currentDate}</span>
-          <span>•</span>
-          <span className="font-semibold text-[#18212B]">{currentTime || '16:30 IST'}</span>
+        <div className="flex items-center gap-2 text-slate-400 font-mono text-[11px] tabular-nums">
+          <Clock className="w-3 h-3 text-slate-400" />
+          <span className="hidden lg:inline">{currentDate}</span>
+          <span className="hidden lg:inline">•</span>
+          <span className="font-semibold text-slate-100">{currentTime || '--:--:-- IST'}</span>
         </div>
 
-        <span className="h-3.5 w-[1px] bg-[#E5E9ED] hidden md:block" />
+        <span className="h-3.5 w-[1px] bg-slate-700 hidden md:block" />
 
-        {/* Weather condition */}
-        <div className="hidden md:flex items-center gap-1.5 text-[#718096] text-xs">
-          <CloudSun className="w-3.5 h-3.5 text-[#4386C6]" />
-          <span>27°C Light Rain • Inundation Risk Active</span>
+        {/* Live Open-Meteo Weather */}
+        <div className="hidden md:flex items-center gap-1.5 text-slate-300 text-[11px]" title={weather?.attribution || 'Open-Meteo'}>
+          <CloudSun className="w-3.5 h-3.5 text-sky-400" />
+          {weather?.available ? (
+            <span className="tabular-nums">
+              {weather.temperature_c}°C {weather.condition} • Wind {weather.wind_speed_kmh} km/h
+              <span className="ml-1.5 text-[9px] font-mono text-slate-400">[Open-Meteo]</span>
+            </span>
+          ) : (
+            <span className="text-slate-400 font-mono text-[10px]">Weather: Unavailable</span>
+          )}
         </div>
       </div>
 
-      {/* Right: Threat Level, Alerts & Admin Profile */}
+      {/* Right: Connectivity Freshness, Threat Level, Alerts */}
       <div className="flex items-center gap-3 text-xs">
+        {/* Data Freshness & Connectivity */}
+        <div className={`hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] border ${
+          isOffline
+            ? 'bg-red-950/60 text-red-300 border-red-700/60'
+            : 'bg-slate-800/80 text-emerald-300 border-slate-700'
+        }`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
+          <span>{isOffline ? 'Degraded • Retrying' : `Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
+        </div>
+
         {/* Threat Level Badge */}
         <div className="flex items-center gap-1.5">
-          <span className="text-[10px] uppercase font-mono font-bold text-[#718096]">Threat Level:</span>
+          <span className="text-[10px] uppercase font-mono font-bold text-slate-400 hidden sm:inline">Threat:</span>
           <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] border flex items-center gap-1 ${threatColorClass}`}>
             <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
             {threatLevel}
           </span>
         </div>
 
-        <span className="h-3.5 w-[1px] bg-[#E5E9ED]" />
+        <span className="h-3.5 w-[1px] bg-slate-700" />
 
         {/* Notification Bell */}
         <button 
           title="Active Notifications"
-          className="relative p-1.5 rounded-md hover:bg-[#F5F6F7] text-[#718096] hover:text-[#18212B] transition"
+          className="relative p-1.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition"
         >
           <Bell className="w-4 h-4" />
           {unreadAlertsCount > 0 && (

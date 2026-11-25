@@ -12,8 +12,15 @@ interface AtlasStore {
   activeRole: 'admin' | 'hospital' | 'rescuer' | 'citizen';
   evaluationResult: any | null;
   isEvaluating: boolean;
+  lastSyncedAt: string | null;
+  syncLatencyMs: number | null;
+  isOffline: boolean;
+  openData: any | null;
+  osmInfrastructure: any | null;
   
   fetchState: () => Promise<void>;
+  fetchOpenData: (includeOsm?: boolean) => Promise<void>;
+  fetchOsmInfrastructure: () => Promise<void>;
   setSelectedIncident: (id: string | null) => void;
   setSelectedResource: (id: string | null) => void;
   setSelectedHospital: (id: string | null) => void;
@@ -60,17 +67,51 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
   activeRole: 'admin',
   evaluationResult: null,
   isEvaluating: false,
+  lastSyncedAt: null,
+  syncLatencyMs: null,
+  isOffline: false,
+  openData: null,
+  osmInfrastructure: null,
 
   fetchState: async () => {
+    const started = performance.now();
     try {
       const data = await api.getScenarioState();
-      set({ state: data, error: null });
+      const latency = Math.round(performance.now() - started);
+      set({
+        state: data,
+        error: null,
+        isOffline: false,
+        syncLatencyMs: latency,
+        lastSyncedAt: new Date().toISOString()
+      });
       const currentSelected = get().selectedIncidentId;
       if (currentSelected && !get().isEvaluating) {
         get().evaluateIncident(currentSelected);
       }
     } catch (err: any) {
-      set({ error: err.message || 'Failed to fetch ATLAS state' });
+      set({
+        error: err.message || 'Failed to fetch ATLAS state',
+        isOffline: true
+      });
+    }
+  },
+
+  fetchOpenData: async (includeOsm = false) => {
+    try {
+      const data = await api.getOpenDataOverview(includeOsm);
+      set({ openData: data });
+    } catch (e) {
+      console.error('Open data fetch failed', e);
+    }
+  },
+
+  fetchOsmInfrastructure: async () => {
+    try {
+      const data = await api.getOsmInfrastructure();
+      set({ osmInfrastructure: data });
+    } catch (e) {
+      console.error('OSM infrastructure fetch failed', e);
     }
   },
 

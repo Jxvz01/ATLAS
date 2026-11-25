@@ -25,10 +25,11 @@ import { useAtlasStore } from '../store/atlasStore';
 import { useAuthStore } from '../store/authStore';
 
 export const HospitalPortal: React.FC = () => {
-  const { state, updateHospitalCapacity, updateReferralStatus } = useAtlasStore();
+  const { state, updateHospitalCapacity, updateReferralStatus, isOffline, syncLatencyMs } = useAtlasStore();
   const { userName, logout } = useAuthStore();
 
   const [activeNav, setActiveNav] = useState('Overview');
+  const [referralFilter, setReferralFilter] = useState<'All' | 'Pending' | 'Accepted' | 'Declined'>('All');
   const [selectedCaseModal, setSelectedCaseModal] = useState<any | null>(null);
   const [bedAdjustConfirm, setBedAdjustConfirm] = useState<{ delta: number; label: string } | null>(null);
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
@@ -342,9 +343,11 @@ export const HospitalPortal: React.FC = () => {
 
           <div className="flex items-center gap-4">
             {/* Last sync timestamp */}
-            <div className="hidden md:flex items-center gap-1.5 text-[11px] text-[#64748B] font-mono">
-              <RefreshCw className="w-3 h-3 text-[#94A3B8]" />
-              <span>Synced 1.5s ago</span>
+            <div className={`hidden md:flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded border ${
+              isOffline ? 'bg-red-50 text-red-700 border-red-200' : 'bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]'
+            }`}>
+              <RefreshCw className={`w-3 h-3 ${isOffline ? 'text-red-500' : 'text-[#16A34A]'}`} />
+              <span>{isOffline ? 'Degraded • Retrying' : `Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
             </div>
 
             {/* Operational Status Pill */}
@@ -451,23 +454,42 @@ export const HospitalPortal: React.FC = () => {
             
             {/* 3. INCOMING CASES (PRIMARY SECTION - 7 cols) */}
             <div className="lg:col-span-7 bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-[#E2E8F0]">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#0F172A]">
                     Incoming Cases
                   </h2>
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#475569] font-semibold">
-                    Live Dispatch Feed
+                    {incomingCases.length} Total
                   </span>
                 </div>
-                <span className="text-[11px] text-[#64748B]">
-                  Coordinated via ATLAS SEOC
-                </span>
+                <div className="flex items-center gap-1">
+                  {(['All', 'Pending', 'Accepted', 'Declined'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setReferralFilter(tab)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
+                        referralFilter === tab
+                          ? 'bg-[#0F172A] text-white'
+                          : 'bg-[#F1F5F9] text-[#64748B] hover:text-[#0F172A]'
+                      }`}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Case Cards List (Sorted by arrival urgency) */}
+              {/* Case Cards List (Filtered & Sorted by arrival urgency) */}
               <div className="space-y-3">
-                {incomingCases.map((c: any) => {
+                {incomingCases
+                  .filter((c: any) => {
+                    if (referralFilter === 'All') return true;
+                    if (referralFilter === 'Pending') return c.status !== 'Accepted' && c.status !== 'Admitted' && c.status !== 'Declined';
+                    if (referralFilter === 'Accepted') return c.status === 'Accepted' || c.status === 'Admitted';
+                    return c.status === 'Declined';
+                  })
+                  .map((c: any) => {
                   const isCritical = c.severity === 'Critical' || c.severity === 'High';
                   return (
                     <div

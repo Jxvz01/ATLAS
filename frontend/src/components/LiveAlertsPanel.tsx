@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useAtlasStore } from '../store/atlasStore';
 import { Incident } from '../types/atlas';
+import { GroqIntelPanel } from './GroqIntelPanel';
 
 interface LiveAlertsPanelProps {
   onSelectEntity?: (type: 'incident' | 'resource' | 'hospital' | 'blockage', id: string, coords?: [number, number]) => void;
@@ -46,11 +47,15 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
     fetchFieldAlerts,
     fetchMissionMessages,
     updateFieldAlertDecision,
-    sendMissionMessage
+    sendMissionMessage,
+    openData,
+    osmInfrastructure,
+    fetchOpenData,
+    fetchOsmInfrastructure
   } = useAtlasStore();
 
-  // Mode: 'alerts' (default) | 'field' (Field Coordination) | 'intelligence' (ATLAS AI)
-  const [activeTab, setActiveTab] = useState<'alerts' | 'field' | 'intelligence'>('alerts');
+  // Mode: 'alerts' (default) | 'field' (Field Coordination) | 'intelligence' (ATLAS AI) | 'opendata' (Open-Source Data)
+  const [activeTab, setActiveTab] = useState<'alerts' | 'field' | 'intelligence' | 'opendata'>('alerts');
   const [alertFilter, setAlertFilter] = useState<'All' | 'Incidents' | 'Roads' | 'Weather'>('All');
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
   const [activeCommsAlertId, setActiveCommsAlertId] = useState<string | null>(null);
@@ -248,7 +253,7 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
 
         <button
           onClick={() => setActiveTab('intelligence')}
-          className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
+          className={`flex-1 py-1.5 px-1.5 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
             activeTab === 'intelligence'
               ? 'bg-white text-[#F26A38] shadow-sm border border-[#E5E9ED]'
               : 'text-[#718096] hover:text-[#18212B]'
@@ -257,6 +262,21 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
           <Sparkles className={`w-3.5 h-3.5 ${activeTab === 'intelligence' ? 'text-[#F26A38]' : 'text-[#718096]'}`} />
           <span>AI</span>
           <span className="w-1.5 h-1.5 rounded-full bg-[#27966B]" />
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('opendata');
+            if (!openData) fetchOpenData(false);
+          }}
+          className={`flex-1 py-1.5 px-1.5 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
+            activeTab === 'opendata'
+              ? 'bg-white text-[#0284C7] shadow-sm border border-[#E5E9ED]'
+              : 'text-[#718096] hover:text-[#18212B]'
+          }`}
+        >
+          <CloudRain className={`w-3.5 h-3.5 ${activeTab === 'opendata' ? 'text-[#0284C7]' : 'text-[#718096]'}`} />
+          <span>Data</span>
         </button>
       </div>
 
@@ -765,9 +785,122 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
             </div>
           )}
 
+          {/* GROQ AI ADVISORY PANEL (ATLAS 2.0) */}
+          <GroqIntelPanel selectedIncident={selectedIncident} />
+
           {/* Quick Context Summary */}
           <div className="text-[10px] text-[#718096] font-mono text-center pt-1 border-t border-[#E5E9ED]">
-            Decision Engine v2.0 • Deterministic Allocation Model
+            Decision Engine v2.0 • Deterministic Allocation + Groq AI Advisory
+          </div>
+        </div>
+      )}
+
+      {/* --- TAB 4: OPEN-SOURCE DATA & OBSERVATIONS --- */}
+      {activeTab === 'opendata' && (
+        <div className="flex-1 flex flex-col overflow-y-auto p-3 space-y-3 text-xs text-[#18212B]">
+          <div className="flex items-center justify-between pb-2 border-b border-[#E5E9ED]">
+            <div className="font-bold text-[11px] uppercase tracking-wider text-[#0284C7] font-mono">
+              External Open-Source Data
+            </div>
+            <button
+              onClick={() => fetchOpenData(false)}
+              className="text-[10px] font-semibold text-[#0284C7] hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div className="p-2 rounded bg-sky-50 border border-sky-200 text-[10px] text-sky-900">
+            <b>Separation Notice:</b> These feeds are <b>EXTERNAL OBSERVATIONS</b> and are kept separate from authoritative ATLAS operational records.
+          </div>
+
+          {/* 1. Open-Meteo Weather */}
+          <div className="p-2.5 rounded-lg border border-[#E5E9ED] bg-[#F8FAFC] space-y-1">
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="font-bold text-[#18212B]">Open-Meteo Weather (Mysuru)</span>
+              <span className={openData?.weather?.available ? 'text-[#27966B]' : 'text-amber-600'}>
+                {openData?.weather?.available ? 'LIVE' : 'UNAVAILABLE'}
+              </span>
+            </div>
+            {openData?.weather?.available ? (
+              <div className="grid grid-cols-2 gap-1 text-[11px] pt-1 tabular-nums">
+                <div>Temp: <b>{openData.weather.temperature_c}°C</b></div>
+                <div>Rain: <b>{openData.weather.precipitation_mm} mm</b></div>
+                <div>Wind: <b>{openData.weather.wind_speed_kmh} km/h</b></div>
+                <div>Humidity: <b>{openData.weather.humidity_pct}%</b></div>
+                <div className="col-span-2 text-[10px] text-[#718096]">
+                  {openData.weather.condition} • {openData.weather.attribution}
+                </div>
+              </div>
+            ) : (
+              <div className="text-[10px] text-[#718096]">{openData?.weather?.reason || 'Loading weather...'}</div>
+            )}
+          </div>
+
+          {/* 2. USGS Earthquakes */}
+          <div className="p-2.5 rounded-lg border border-[#E5E9ED] bg-white space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="font-bold text-[#18212B]">USGS Seismic Feed (1200km)</span>
+              <span className="text-[#718096]">{openData?.earthquakes?.count ?? 0} events</span>
+            </div>
+            {openData?.earthquakes?.available ? (
+              openData.earthquakes.events.length === 0 ? (
+                <div className="text-[10px] text-[#718096]">No M2.5+ seismic events in last 30 days.</div>
+              ) : (
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {openData.earthquakes.events.slice(0, 5).map((eq: any) => (
+                    <div key={eq.id} className="text-[10px] p-1.5 rounded bg-[#F8FAFC] border border-[#E5E9ED]">
+                      <div className="font-semibold text-[#18212B]">{eq.title}</div>
+                      <div className="text-[9px] font-mono text-[#718096]">Depth: {eq.depth_km} km • USGS</div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="text-[10px] text-[#718096]">{openData?.earthquakes?.reason || 'Loading USGS feed...'}</div>
+            )}
+          </div>
+
+          {/* 3. NASA EONET Open Hazards */}
+          <div className="p-2.5 rounded-lg border border-[#E5E9ED] bg-white space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="font-bold text-[#18212B]">NASA EONET Global Hazards</span>
+              <span className="text-[#718096]">{openData?.eonet?.count ?? 0} open</span>
+            </div>
+            {openData?.eonet?.available ? (
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {openData.eonet.events.slice(0, 5).map((ev: any) => (
+                  <div key={ev.id} className="text-[10px] p-1.5 rounded bg-[#F8FAFC] border border-[#E5E9ED]">
+                    <div className="font-semibold text-[#18212B] truncate">{ev.title}</div>
+                    <div className="text-[9px] font-mono text-[#718096]">{ev.category} • NASA EONET</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[10px] text-[#718096]">{openData?.eonet?.reason || 'Loading NASA EONET...'}</div>
+            )}
+          </div>
+
+          {/* 4. OpenStreetMap Emergency Infrastructure */}
+          <div className="p-2.5 rounded-lg border border-[#E5E9ED] bg-white space-y-1.5">
+            <div className="flex items-center justify-between text-[10px] font-mono">
+              <span className="font-bold text-[#18212B]">OSM Emergency POIs (Mysuru)</span>
+              <button
+                onClick={() => fetchOsmInfrastructure()}
+                className="px-2 py-0.5 rounded bg-[#0284C7] text-white text-[9px] font-bold"
+              >
+                {osmInfrastructure ? 'Reload OSM' : 'Load OSM POIs'}
+              </button>
+            </div>
+            {osmInfrastructure?.available ? (
+              <div className="text-[10px] text-[#5B6777]">
+                Loaded <b>{osmInfrastructure.count}</b> hospitals, clinics & fire stations ({osmInfrastructure.attribution}). Toggle "OSM Emergency POIs" in Map Layers to view.
+              </div>
+            ) : osmInfrastructure ? (
+              <div className="text-[10px] text-amber-700">{osmInfrastructure.reason}</div>
+            ) : (
+              <div className="text-[10px] text-[#718096]">Click "Load OSM POIs" to query Overpass API (cached 15m).</div>
+            )}
           </div>
         </div>
       )}
