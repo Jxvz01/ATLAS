@@ -515,12 +515,23 @@ export const HospitalPortal: React.FC = () => {
 
                       {/* Right: Actions */}
                       <div className="flex sm:flex-col items-center sm:items-end justify-end gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E2E8F0]">
-                        <button
-                          onClick={() => handleAcceptCase(c)}
-                          className="px-3.5 py-1.5 rounded-lg bg-[#F26536] hover:bg-[#E05322] active:scale-98 text-white text-xs font-semibold shadow-xs transition"
-                        >
-                          Accept
-                        </button>
+                        {c.status === 'Accepted' || c.status === 'Admitted' ? (
+                          <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{c.status}</span>
+                          </span>
+                        ) : c.status === 'Declined' ? (
+                          <span className="px-3 py-1 rounded-lg bg-red-100 text-red-700 border border-red-200 text-xs font-bold">
+                            Declined
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleAcceptCase(c)}
+                            className="px-3.5 py-1.5 rounded-lg bg-[#F26536] hover:bg-[#E05322] active:scale-98 text-white text-xs font-semibold shadow-xs transition"
+                          >
+                            Accept
+                          </button>
+                        )}
                         <button
                           onClick={() => setSelectedCaseModal(c)}
                           className="px-2.5 py-1 text-[11px] text-[#64748B] hover:text-[#0F172A] hover:bg-white rounded transition font-medium"

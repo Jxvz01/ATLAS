@@ -119,7 +119,7 @@ export const RescuerPortal: React.FC = () => {
 
   // Lifecycle states: ASSIGNED -> ACKNOWLEDGED -> EN ROUTE -> ON SCENE -> COMPLETED
   // Map backend status strings to lifecycle stages
-  const currentStatus = activeAssignment?.assignment_status || 'En Route';
+  const currentStatus = activeAssignment?.assignment_status || 'Standby';
 
   const lifecycleStages = [
     { key: 'Assigned', label: 'ASSIGNED', next: 'Acknowledged', nextLabel: 'Acknowledge Mission' },
@@ -130,10 +130,10 @@ export const RescuerPortal: React.FC = () => {
   ];
 
   const currentStageIndex = lifecycleStages.findIndex(
-    s => s.key.toLowerCase() === currentStatus.toLowerCase()
+    s => s.key.toLowerCase() === currentStatus.toLowerCase() || (currentStatus.toLowerCase() === 'dispatched' && s.key === 'Assigned')
   );
 
-  const activeStage = currentStageIndex >= 0 ? lifecycleStages[currentStageIndex] : lifecycleStages[2];
+  const activeStage = currentStageIndex >= 0 ? lifecycleStages[currentStageIndex] : lifecycleStages[0];
 
   // Handle Valid Status Progression
   const handleProgressStatus = async (targetNextStage: string) => {
@@ -517,7 +517,11 @@ export const RescuerPortal: React.FC = () => {
               </div>
 
               {/* Primary Easy-to-Tap Lifecycle Transition Button */}
-              {activeStage.next ? (
+              {!activeAssignment ? (
+                <div className="w-full py-3 bg-[#F8FAFC] border border-[#E3E8ED] text-[#64748B] rounded-xl text-xs font-semibold text-center">
+                  Standby — Awaiting Command Dispatch
+                </div>
+              ) : activeStage.next ? (
                 <button
                   onClick={() => handleProgressStatus(activeStage.next!)}
                   className="w-full py-3.5 bg-[#F26536] hover:bg-[#E05322] active:scale-98 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition"

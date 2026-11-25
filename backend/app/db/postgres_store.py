@@ -139,21 +139,58 @@ class PostgresOperationalStore:
             return [self._model_to_incident(r) for r in rows], total
 
     def _model_to_incident(self, row: IncidentModel) -> IncidentRecord:
+        status_map = {
+            "Active": IncidentStatus.ACTIVE,
+            "Assigned": IncidentStatus.RESPONSE_IN_PROGRESS,
+            "In Progress": IncidentStatus.RESPONSE_IN_PROGRESS,
+            "On Scene": IncidentStatus.ON_SCENE,
+            "Resolved": IncidentStatus.RESOLVED,
+        }
+        try:
+            parsed_status = status_map.get(row.status) or IncidentStatus(row.status)
+        except ValueError:
+            parsed_status = IncidentStatus.ACTIVE
+
+        try:
+            parsed_type = IncidentType(row.type)
+        except ValueError:
+            parsed_type = IncidentType.OTHER
+
+        try:
+            parsed_cat = IncidentCategory(row.category)
+        except ValueError:
+            parsed_cat = IncidentCategory.PUBLIC_SAFETY
+
+        try:
+            parsed_prio = PriorityLevel(row.priority_level)
+        except ValueError:
+            parsed_prio = PriorityLevel.HIGH
+
+        try:
+            parsed_ver = VerificationStatus(row.verification_status)
+        except ValueError:
+            parsed_ver = VerificationStatus.REPORTED
+
+        try:
+            parsed_src = ReportSource(row.source)
+        except ValueError:
+            parsed_src = ReportSource.CIVILIAN_SOS
+
         return IncidentRecord(
             id=row.id,
-            type=IncidentType(row.type),
-            category=IncidentCategory(row.category),
+            type=parsed_type,
+            category=parsed_cat,
             severity=row.severity,
             urgency=row.urgency,
             confidence=row.confidence,
             priority_score=row.priority_score,
-            priority_level=PriorityLevel(row.priority_level),
-            status=IncidentStatus(row.status),
-            verification_status=VerificationStatus(row.verification_status),
+            priority_level=parsed_prio,
+            status=parsed_status,
+            verification_status=parsed_ver,
             latitude=row.latitude,
             longitude=row.longitude,
             location_description=row.location_description or "",
-            source=ReportSource(row.source),
+            source=parsed_src,
             source_reference=row.source_reference,
             people_affected=row.people_affected,
             casualties=row.casualties,

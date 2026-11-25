@@ -29,7 +29,9 @@ THRESHOLDS = {
 INCIDENT_CAPABILITY_MAP = {
     "Flooding": ["water_rescue", "evacuation"],
     "Trapped People": ["structural_extrication", "water_rescue"],
+    "Trapped / Need Rescue": ["structural_extrication", "water_rescue", "evacuation"],
     "Medical Emergency": ["medical_trauma", "critical_transport", "first_aid"],
+    "Medical / Injury": ["medical_trauma", "critical_transport", "first_aid"],
     "Road Blockage": ["debris_clearance"],
     "Fire": ["fire_suppression", "structural_extrication"],
     "Structural Damage": ["structural_extrication", "debris_clearance"],

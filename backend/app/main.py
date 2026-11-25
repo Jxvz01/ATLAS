@@ -359,6 +359,36 @@ def assign_resource(req: CreateAssignmentRequest):
         db.incoming_patients[pat_id] = in_patient
 
     db.log_event("ASSIGNMENT_DISPATCHED", f"Dispatched unit {res.name} to incident {inc.id}. Estimated distance: {dist} km.", assign_id)
+
+    # Persist assignment, resource, and incident in PostgreSQL
+    try:
+        from app.db.postgres_store import db_store
+        from app.db.session import get_db_session
+        from app.db.models_sql import AssignmentModel, ResourceModel, IncidentModel
+        with get_db_session() as session:
+            existing_asg = session.query(AssignmentModel).filter(AssignmentModel.id == assign_id).first()
+            if not existing_asg:
+                session.add(AssignmentModel(
+                    id=assign_id,
+                    incident_id=req.incident_id,
+                    resource_id=req.resource_id,
+                    route_geometry=coords,
+                    route_distance_km=dist,
+                    assignment_status="Dispatched",
+                    explanation=explanation,
+                    created_at=assignment.created_at,
+                    updated_at=assignment.updated_at
+                ))
+            db_res = session.query(ResourceModel).filter(ResourceModel.id == req.resource_id).first()
+            if db_res:
+                db_res.status = "Assigned"
+                db_res.current_assignment_id = assign_id
+            db_inc = session.query(IncidentModel).filter(IncidentModel.id == req.incident_id).first()
+            if db_inc:
+                db_inc.status = "Assigned"
+    except Exception as e:
+        print(f"Warning: Assignment persist failed: {e}")
+
     return assignment
 
 @app.patch("/api/assignments/{assignment_id}")
@@ -393,6 +423,28 @@ def update_assignment_status(assignment_id: str, req: UpdateAssignmentRequest):
         if inc: inc.status = "Active"
 
     db.log_event("ASSIGNMENT_STATUS_UPDATE", f"Assignment {assignment_id} updated to {req.assignment_status} for unit {res.name if res else 'Unknown'}.", assignment_id)
+
+    # Persist status update in PostgreSQL
+    try:
+        from app.db.session import get_db_session
+        from app.db.models_sql import AssignmentModel, ResourceModel, IncidentModel
+        with get_db_session() as session:
+            db_asg = session.query(AssignmentModel).filter(AssignmentModel.id == assignment_id).first()
+            if db_asg:
+                db_asg.assignment_status = asg.assignment_status
+                db_asg.updated_at = asg.updated_at
+            if res:
+                db_res = session.query(ResourceModel).filter(ResourceModel.id == res.id).first()
+                if db_res:
+                    db_res.status = res.status
+                    db_res.current_assignment_id = res.current_assignment_id
+            if inc:
+                db_inc = session.query(IncidentModel).filter(IncidentModel.id == inc.id).first()
+                if db_inc:
+                    db_inc.status = inc.status
+    except Exception as e:
+        print(f"Warning: Assignment status persist failed: {e}")
+
     return asg
 
 # --- Road Blockages Endpoints ---
@@ -718,6 +770,11 @@ def update_referral(referral_id: str, req: UpdateReferralRequest):
         hosp = db.hospitals.get(ref.hospital_id)
         if hosp:
             hosp.available_beds = max(0, hosp.available_beds - ref.estimated_patient_count)
+            try:
+                from app.db.postgres_store import db_store as pg_store
+                pg_store.update_hospital_capacity(hosp.id, {"available_beds": hosp.available_beds})
+            except Exception as e:
+                print(f"Warning: Hospital capacity persist on referral failed: {e}")
             db.log_event(
                 "HOSPITAL_REFERRAL_ACCEPTED",
                 f"Referral {referral_id} {req.status}. {ref.estimated_patient_count} bed(s) allocated at {hosp.name}. Remaining beds: {hosp.available_beds}.",

@@ -56,6 +56,7 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
   const [activeCommsAlertId, setActiveCommsAlertId] = useState<string | null>(null);
   const [adminChatInput, setAdminChatInput] = useState('');
   const [adminChatSending, setAdminChatSending] = useState(false);
+  const [manualUnitId, setManualUnitId] = useState('');
 
   // Poll field alerts every 3.5s
   useEffect(() => {
@@ -729,8 +730,36 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
                   )}
                 </div>
               ) : (
-                <div className="text-[11px] text-[#718096] p-2 bg-[#F5F6F7] rounded">
-                  All eligible response units currently deployed. Awaiting unit availability.
+                <div className="space-y-2">
+                  <div className="text-[11px] text-[#718096] p-2 bg-[#F5F6F7] rounded">
+                    No automatic capability match found. Select an available unit for manual dispatch:
+                  </div>
+                  {selectedIncident.status === 'Active' && (
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={manualUnitId || (state?.resources.find(r => r.status === 'Available')?.id || '')}
+                        onChange={(e) => setManualUnitId(e.target.value)}
+                        className="flex-1 p-1.5 rounded border border-[#E5E9ED] bg-white text-xs font-semibold"
+                      >
+                        {(state?.resources || []).filter(r => r.status === 'Available').map(r => (
+                          <option key={r.id} value={r.id}>{r.id} – {r.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={async () => {
+                          const targetId = manualUnitId || state?.resources.find(r => r.status === 'Available')?.id;
+                          if (targetId) {
+                            await assignResource(selectedIncident.id, targetId, `Manual Command Dispatch: Assigned ${targetId} to ${selectedIncident.id}`);
+                            setDecisionFeedback(`Dispatched ${targetId} to ${selectedIncident.id}.`);
+                            setTimeout(() => setDecisionFeedback(null), 4000);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded bg-[#F26A38] hover:bg-[#d95828] text-white font-bold text-xs transition"
+                      >
+                        Dispatch
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
