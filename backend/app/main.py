@@ -17,6 +17,7 @@ from app.engine import (
 )
 from app.geospatial import generate_safe_route
 from app.api.v1.router import router as v1_router
+from app.api.v2_intel import router as v2_intel_router
 
 app = FastAPI(
     title="ATLAS Intelligence Engine API",
@@ -26,6 +27,7 @@ app = FastAPI(
 
 # Mount Version 1 Modular Incident Engine & Architecture
 app.include_router(v1_router)
+app.include_router(v2_intel_router)
 
 # Enable CORS for frontend Vite development
 app.add_middleware(
