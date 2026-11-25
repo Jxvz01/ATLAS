@@ -99,7 +99,21 @@ class IncomingPatient(BaseModel):
     estimated_arrival_minutes: int
     estimated_patient_count: int
     patient_condition: str
-    status: str = "En Route" # En Route, Arrived, Admitted
+    severity: str = "Urgent"
+    treatment_required: Optional[str] = None
+    status: str = "En Route" # En Route, Arrived, Admitted, Declined
+
+class Shelter(BaseModel):
+    id: str
+    name: str
+    latitude: float
+    longitude: float
+    address: str
+    capacity: int = 100
+    current_occupancy: int = 0
+    operational_status: str = "Open" # Open, Full, Closed
+    supplies_status: str = "Adequate" # Adequate, Low, Critical
+    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
 class StateStore:
     def __init__(self):
@@ -112,6 +126,7 @@ class StateStore:
         self.alerts: List[Alert] = []
         self.hazards: List[Dict[str, Any]] = []
         self.incoming_patients: Dict[str, IncomingPatient] = {}
+        self.shelters: Dict[str, Shelter] = {}
         self.seed_raw: Dict[str, Any] = {}
         self.load_seed_data()
 
@@ -132,6 +147,7 @@ class StateStore:
         self.alerts.clear()
         self.hazards.clear()
         self.incoming_patients.clear()
+        self.shelters.clear()
 
         # Load hospitals
         for h in self.seed_raw.get("hospitals", []):
@@ -154,6 +170,10 @@ class StateStore:
         # Load alerts
         for a in self.seed_raw.get("alerts", []):
             self.alerts.append(Alert(**a))
+
+        # Load shelters
+        for s in self.seed_raw.get("shelters", []):
+            self.shelters[s["id"]] = Shelter(**s)
 
         self.hazards = copy.deepcopy(self.seed_raw.get("hazards", []))
 
@@ -201,6 +221,43 @@ class StateStore:
                         required_capabilities=json.loads(r["required_capabilities"] or "[]"),
                         created_at=r["created_at"],
                         updated_at=r["updated_at"]
+                    )
+
+                # Sync shelters from SQLite
+                shelter_rows = conn.execute("SELECT * FROM shelters;").fetchall()
+                for s in shelter_rows:
+                    self.shelters[s["id"]] = Shelter(
+                        id=s["id"],
+                        name=s["name"],
+                        latitude=s["latitude"],
+                        longitude=s["longitude"],
+                        address=s["address"],
+                        capacity=s["capacity"],
+                        current_occupancy=s["current_occupancy"],
+                        operational_status=s["operational_status"],
+                        supplies_status=s["supplies_status"],
+                        updated_at=s["updated_at"]
+                    )
+                # Seed default shelters into SQLite if table is empty
+                if not shelter_rows:
+                    for sh in self.shelters.values():
+                        from app.domain.models import ShelterRecord
+                        db_store.insert_shelter(ShelterRecord(**sh.dict()))
+
+                # Sync incoming patients / medical referrals from SQLite
+                ref_rows = conn.execute("SELECT * FROM medical_referrals ORDER BY created_at ASC;").fetchall()
+                for ref in ref_rows:
+                    self.incoming_patients[ref["id"]] = IncomingPatient(
+                        id=ref["id"],
+                        incident_id=ref["incident_id"],
+                        hospital_id=ref["hospital_id"],
+                        resource_id=ref["resource_id"],
+                        estimated_arrival_minutes=ref["estimated_arrival_minutes"],
+                        estimated_patient_count=ref["estimated_patient_count"],
+                        patient_condition=ref["patient_condition"],
+                        severity=ref["severity"],
+                        treatment_required=ref["treatment_required"],
+                        status=ref["status"]
                     )
         except Exception as e:
             # Fallback if SQLite store table not ready yet

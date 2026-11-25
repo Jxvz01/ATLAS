@@ -123,3 +123,29 @@ class DuplicateCandidate(BaseModel):
     description_similarity: float
     confidence_score: float
     reasons: List[str]
+
+class MedicalReferralRecord(BaseModel):
+    id: str
+    incident_id: str
+    hospital_id: str
+    resource_id: str
+    estimated_arrival_minutes: int = 15
+    estimated_patient_count: int = 1
+    patient_condition: str
+    severity: str = "Urgent" # Critical, Urgent, Standard
+    treatment_required: Optional[str] = None
+    status: str = "En Route" # En Route, Arrived, Admitted, Declined
+    created_at: str = Field(default_factory=utc_now_iso)
+    updated_at: str = Field(default_factory=utc_now_iso)
+
+class ShelterRecord(BaseModel):
+    id: str
+    name: str
+    latitude: float
+    longitude: float
+    address: str
+    capacity: int
+    current_occupancy: int = 0
+    operational_status: str = "Open" # Open, Full, Closed
+    supplies_status: str = "Adequate" # Adequate, Low, Critical
+    updated_at: str = Field(default_factory=utc_now_iso)

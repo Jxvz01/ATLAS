@@ -8,7 +8,7 @@ import json
 import os
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
-from app.domain.models import IncidentRecord, IncidentReport, IncidentEvent, IncidentActor, utc_now_iso
+from app.domain.models import IncidentRecord, IncidentReport, IncidentEvent, IncidentActor, MedicalReferralRecord, ShelterRecord, utc_now_iso
 from app.domain.enums import IncidentType, IncidentCategory, IncidentStatus, VerificationStatus, PriorityLevel, ReportSource, ActorRole, EventType
 
 DEFAULT_DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "data", "atlas_operational.db"))
@@ -116,6 +116,43 @@ class SQLiteOperationalStore:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_entity_id ON incident_events(entity_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON incident_events(event_type);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_created ON incident_events(created_at);")
+
+            # Medical Referrals Table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS medical_referrals (
+                id TEXT PRIMARY KEY,
+                incident_id TEXT NOT NULL,
+                hospital_id TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                estimated_arrival_minutes INTEGER NOT NULL DEFAULT 15,
+                estimated_patient_count INTEGER NOT NULL DEFAULT 1,
+                patient_condition TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'Urgent',
+                treatment_required TEXT,
+                status TEXT NOT NULL DEFAULT 'En Route',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_hospital ON medical_referrals(hospital_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_referrals_incident ON medical_referrals(incident_id);")
+
+            # Shelters Table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shelters (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                latitude REAL NOT NULL,
+                longitude REAL NOT NULL,
+                address TEXT NOT NULL,
+                capacity INTEGER NOT NULL DEFAULT 100,
+                current_occupancy INTEGER NOT NULL DEFAULT 0,
+                operational_status TEXT NOT NULL DEFAULT 'Open',
+                supplies_status TEXT NOT NULL DEFAULT 'Adequate',
+                updated_at TEXT NOT NULL
+            );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_shelters_status ON shelters(operational_status);")
 
             conn.commit()
 
@@ -335,6 +372,110 @@ class SQLiteOperationalStore:
             reason=row["reason"],
             context=json.loads(row["context"] or "{}"),
             created_at=row["created_at"]
+        )
+
+    # --- Medical Referrals CRUD ---
+    def insert_referral(self, ref: MedicalReferralRecord) -> MedicalReferralRecord:
+        with self.get_connection() as conn:
+            conn.execute("""
+            INSERT INTO medical_referrals (
+                id, incident_id, hospital_id, resource_id, estimated_arrival_minutes,
+                estimated_patient_count, patient_condition, severity, treatment_required,
+                status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                ref.id, ref.incident_id, ref.hospital_id, ref.resource_id,
+                ref.estimated_arrival_minutes, ref.estimated_patient_count,
+                ref.patient_condition, ref.severity, ref.treatment_required,
+                ref.status, ref.created_at, ref.updated_at
+            ))
+            conn.commit()
+        return ref
+
+    def update_referral(self, ref: MedicalReferralRecord) -> MedicalReferralRecord:
+        with self.get_connection() as conn:
+            conn.execute("""
+            UPDATE medical_referrals SET
+                status = ?, estimated_arrival_minutes = ?, updated_at = ?
+            WHERE id = ?;
+            """, (ref.status, ref.estimated_arrival_minutes, ref.updated_at, ref.id))
+            conn.commit()
+        return ref
+
+    def get_referral(self, ref_id: str) -> Optional[MedicalReferralRecord]:
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM medical_referrals WHERE id = ?;", (ref_id,)).fetchone()
+            if not row:
+                return None
+            return self._row_to_referral(row)
+
+    def list_referrals(self, hospital_id: Optional[str] = None) -> List[MedicalReferralRecord]:
+        with self.get_connection() as conn:
+            if hospital_id:
+                rows = conn.execute("SELECT * FROM medical_referrals WHERE hospital_id = ? ORDER BY created_at DESC;", (hospital_id,)).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM medical_referrals ORDER BY created_at DESC;").fetchall()
+            return [self._row_to_referral(r) for r in rows]
+
+    def _row_to_referral(self, row: sqlite3.Row) -> MedicalReferralRecord:
+        return MedicalReferralRecord(
+            id=row["id"],
+            incident_id=row["incident_id"],
+            hospital_id=row["hospital_id"],
+            resource_id=row["resource_id"],
+            estimated_arrival_minutes=row["estimated_arrival_minutes"],
+            estimated_patient_count=row["estimated_patient_count"],
+            patient_condition=row["patient_condition"],
+            severity=row["severity"],
+            treatment_required=row["treatment_required"],
+            status=row["status"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"]
+        )
+
+    # --- Shelters CRUD ---
+    def insert_shelter(self, shelter: ShelterRecord) -> ShelterRecord:
+        with self.get_connection() as conn:
+            conn.execute("""
+            INSERT OR REPLACE INTO shelters (
+                id, name, latitude, longitude, address, capacity,
+                current_occupancy, operational_status, supplies_status, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                shelter.id, shelter.name, shelter.latitude, shelter.longitude,
+                shelter.address, shelter.capacity, shelter.current_occupancy,
+                shelter.operational_status, shelter.supplies_status, shelter.updated_at
+            ))
+            conn.commit()
+        return shelter
+
+    def update_shelter(self, shelter: ShelterRecord) -> ShelterRecord:
+        with self.get_connection() as conn:
+            conn.execute("""
+            UPDATE shelters SET
+                current_occupancy = ?, operational_status = ?, supplies_status = ?, updated_at = ?
+            WHERE id = ?;
+            """, (shelter.current_occupancy, shelter.operational_status, shelter.supplies_status, shelter.updated_at, shelter.id))
+            conn.commit()
+        return shelter
+
+    def list_shelters(self) -> List[ShelterRecord]:
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT * FROM shelters ORDER BY id ASC;").fetchall()
+            return [self._row_to_shelter(r) for r in rows]
+
+    def _row_to_shelter(self, row: sqlite3.Row) -> ShelterRecord:
+        return ShelterRecord(
+            id=row["id"],
+            name=row["name"],
+            latitude=row["latitude"],
+            longitude=row["longitude"],
+            address=row["address"],
+            capacity=row["capacity"],
+            current_occupancy=row["current_occupancy"],
+            operational_status=row["operational_status"],
+            supplies_status=row["supplies_status"],
+            updated_at=row["updated_at"]
         )
 
 # Global singleton persistent store
