@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL 16 + PostGIS 3.4 Alpine Container
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: atlas_postgres_gis
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-atlas_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - atlas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-atlas_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # 2. ATLAS Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: atlas_backend_api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-atlas_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-atlas_db}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      ENABLE_POSTGIS: "true"
+      ENVIRONMENT: production
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  atlas_pgdata:
+    driver: local
