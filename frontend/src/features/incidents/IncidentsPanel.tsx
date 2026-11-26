@@ -14,19 +14,48 @@ import {
 import { useAtlasStore } from '../../store/atlasStore';
 import { Incident } from '../../types/atlas';
 
+const DEMO_SEED_IDS = new Set(['INC-101', 'INC-102', 'INC-103', 'INC-104', 'INC-105']);
+const TEST_ARTIFACT_PATTERNS = [
+  'UNIFIED-E2E-SOS-',
+  'LIVE-RELEASE-CHECK-',
+  'API Integration Test',
+  'FIELD ALERT from NDRF Boat Team Alpha',
+  'FIELD ALERT from Boat Team Bravo',
+  'Rising floodwaters in Kuvempunagar residential enclave.',
+  'Family cut off by flash floods near canal.',
+  'Water rapidly rising inside ground floor.',
+];
+
+function isDemoOrTestIncident(inc: Incident): boolean {
+  if (DEMO_SEED_IDS.has(inc.id)) return true;
+  const desc = inc.description || '';
+  return TEST_ARTIFACT_PATTERNS.some((p) => desc.includes(p));
+}
+
 export const IncidentsPanel: React.FC = () => {
   const { state, selectedIncidentId, setSelectedIncident, updateIncident } = useAtlasStore();
   const [filter, setFilter] = useState<'All' | 'Critical' | 'High' | 'Active' | 'Resolved'>('All');
+  const [showDemoArchive, setShowDemoArchive] = useState<boolean>(false);
 
   const incidents = state?.incidents || [];
+  const demoCount = incidents.filter(isDemoOrTestIncident).length;
 
-  const filteredIncidents = incidents.filter(inc => {
-    if (filter === 'Critical') return inc.priority_level === 'Critical';
-    if (filter === 'High') return inc.priority_level === 'High' || inc.priority_level === 'Critical';
-    if (filter === 'Active') return inc.status === 'Active' || inc.status === 'Assigned' || inc.status === 'In Progress';
-    if (filter === 'Resolved') return inc.status === 'Resolved';
-    return true;
-  });
+  const filteredIncidents = incidents
+    .filter(inc => {
+      if (!showDemoArchive && isDemoOrTestIncident(inc)) return false;
+      if (filter === 'Critical') return inc.priority_level === 'Critical';
+      if (filter === 'High') return inc.priority_level === 'High' || inc.priority_level === 'Critical';
+      if (filter === 'Active') return inc.status === 'Active' || inc.status === 'Assigned' || inc.status === 'In Progress';
+      if (filter === 'Resolved') return inc.status === 'Resolved';
+      return true;
+    })
+    .sort((a, b) => {
+      // Prioritize unacknowledged Active SOS at the very top, then newest created_at first
+      const aActive = a.status === 'Active' ? 1 : 0;
+      const bActive = b.status === 'Active' ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
 
   return (
     <div className="flex flex-col h-full bg-graphite border-r border-steel/60">
@@ -40,6 +69,15 @@ export const IncidentsPanel: React.FC = () => {
               {filteredIncidents.length}
             </span>
           </div>
+          {demoCount > 0 && (
+            <button
+              onClick={() => setShowDemoArchive(v => !v)}
+              className="text-[10px] font-mono px-2 py-0.5 rounded border border-steel/60 text-gray-400 hover:text-coolwhite"
+              title="Toggle seeded/test incidents"
+            >
+              {showDemoArchive ? 'Hide Test/Demo' : `Archived (${demoCount})`}
+            </button>
+          )}
         </div>
 
         {/* Filters */}
@@ -70,6 +108,7 @@ export const IncidentsPanel: React.FC = () => {
           filteredIncidents.map(inc => {
             const isSelected = selectedIncidentId === inc.id;
             const isCritical = inc.priority_level === 'Critical';
+            const isNewSos = inc.status === 'Active' && /sos|citizen|civilian/i.test(inc.source || '');
 
             return (
               <div
@@ -78,11 +117,18 @@ export const IncidentsPanel: React.FC = () => {
                 className={`p-3 cursor-pointer transition select-none ${
                   isSelected 
                     ? 'bg-steel/50 border-l-4 border-l-signal' 
+                    : isNewSos
+                    ? 'bg-red-950/20 hover:bg-red-950/30 border-l-4 border-l-red-500'
                     : 'hover:bg-steel/20 border-l-4 border-l-transparent'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {isNewSos && (
+                      <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-red-600 text-white uppercase animate-pulse">
+                        NEW SOS
+                      </span>
+                    )}
                     <span className="font-mono text-[11px] font-bold text-gray-300">
                       {inc.id}
                     </span>
@@ -119,18 +165,24 @@ export const IncidentsPanel: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between text-[10px] font-mono text-gray-400 mt-2">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <span className="flex items-center gap-1">
                       <Users className="w-3 h-3 text-gray-500" />
-                      {inc.affected_population} affected
+                      {inc.affected_population}
                     </span>
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-gray-500" />
-                      {inc.latitude.toFixed(3)}, {inc.longitude.toFixed(3)}
+                      {inc.latitude.toFixed(4)}, {inc.longitude.toFixed(4)}
                     </span>
+                    {inc.created_at && (
+                      <span className="flex items-center gap-1 text-gray-500">
+                        <Clock className="w-3 h-3" />
+                        {new Date(inc.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
 
-                  <span className="text-gray-500">{inc.source}</span>
+                  <span className="text-gray-500 truncate max-w-[90px]">{inc.source}</span>
                 </div>
               </div>
             );
