@@ -26,12 +26,19 @@ import {
   AlertCircle,
   MessageSquare,
   Siren,
-  CheckCheck
+  CheckCheck,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Server
 } from 'lucide-react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAtlasStore } from '../store/atlasStore';
 import { useAuthStore } from '../store/authStore';
+import { VoiceMicButton } from '../components/VoiceMicButton';
+import { offlineQueue, QueuedOperation } from '../services/offlineQueue';
+import { getApiBase, setApiBase } from '../services/api';
 
 export const RescuerPortal: React.FC = () => {
   const { 
@@ -46,7 +53,12 @@ export const RescuerPortal: React.FC = () => {
     sendMissionMessage,
     acknowledgeMessage,
     isOffline,
-    syncLatencyMs
+    syncLatencyMs,
+    networkState,
+    lowBandwidthMode,
+    toggleLowBandwidthMode,
+    refreshNetworkState,
+    fetchState
   } = useAtlasStore();
   const { logout, userName, entityId } = useAuthStore();
 
@@ -55,7 +67,17 @@ export const RescuerPortal: React.FC = () => {
   const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
 
   // Modals state
-  const [activeModal, setActiveModal] = useState<'report' | 'backup' | 'medical' | 'complete' | 'nearby' | 'comms' | null>(null);
+  const [activeModal, setActiveModal] = useState<'report' | 'backup' | 'medical' | 'complete' | 'nearby' | 'comms' | 'server' | null>(null);
+
+  // Offline Queue & Server Settings states
+  const [outboxItems, setOutboxItems] = useState<QueuedOperation[]>([]);
+  const [serverUrlInput, setServerUrlInput] = useState<string>(getApiBase());
+  const [syncingNow, setSyncingNow] = useState(false);
+
+  useEffect(() => {
+    const unsub = offlineQueue.subscribe(setOutboxItems);
+    return () => unsub();
+  }, []);
   
   // Report Nearby Emergency states
   const [nearbyType, setNearbyType] = useState('Trapped People');
@@ -302,19 +324,48 @@ export const RescuerPortal: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Connection Status */}
-          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] border ${
-            isOffline
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Network State Pill (ONLINE / LOW_BANDWIDTH / OFFLINE / SYNCING) */}
+          <div className={`flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] border ${
+            networkState === 'OFFLINE'
               ? 'bg-red-950/70 text-red-300 border-red-700'
+              : networkState === 'LOW_BANDWIDTH'
+              ? 'bg-amber-950/70 text-amber-300 border-amber-700'
+              : networkState === 'SYNCING'
+              ? 'bg-sky-950/70 text-sky-300 border-sky-700'
               : 'bg-slate-800 text-emerald-300 border-slate-700'
           }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
-            <span className="hidden sm:inline">{isOffline ? 'Degraded' : `Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
+            {networkState === 'OFFLINE' ? <WifiOff className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+            <span>{networkState === 'LOW_BANDWIDTH' ? '2G LOW-BW' : networkState}</span>
           </div>
 
+          {/* 2G Low-Bandwidth Toggle */}
+          <button
+            onClick={toggleLowBandwidthMode}
+            title="Toggle 2G Low-Bandwidth Mode"
+            className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold border transition ${
+              lowBandwidthMode
+                ? 'bg-amber-500 text-slate-950 border-amber-400'
+                : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+            }`}
+          >
+            2G
+          </button>
+
+          {/* Server Endpoint Config (for Physical Android Phone) */}
+          <button
+            onClick={() => {
+              setServerUrlInput(getApiBase());
+              setActiveModal('server');
+            }}
+            title="Configure Backend Server URL"
+            className="p-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300"
+          >
+            <Server className="w-3.5 h-3.5" />
+          </button>
+
           {/* Current Mission Status Pill */}
-          <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase border ${
+          <span className={`hidden sm:inline-block px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase border ${
             activeAssignment
               ? 'bg-[#E85D2A]/20 text-[#FF8A65] border-[#E85D2A]/40'
               : 'bg-slate-800 text-slate-300 border-slate-700'
@@ -328,7 +379,6 @@ export const RescuerPortal: React.FC = () => {
             className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-red-950/60 hover:text-red-300 border border-slate-700 text-[11px] font-medium text-slate-300 transition"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </header>
@@ -394,6 +444,67 @@ export const RescuerPortal: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* PERSISTENT OFFLINE OUTBOX QUEUE BAR */}
+        {outboxItems.length > 0 && (
+          <div className="bg-white rounded-xl border border-[#DCE2E8] p-3 shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#0F172A]">
+                <RefreshCw className={`w-3.5 h-3.5 text-[#E85D2A] ${syncingNow ? 'animate-spin' : ''}`} />
+                <span>
+                  Offline Outbox: {outboxItems.filter(i => i.deliveryState === 'QUEUED' || i.deliveryState === 'SENDING').length} Pending •{' '}
+                  {outboxItems.filter(i => i.deliveryState === 'FAILED').length} Failed •{' '}
+                  {outboxItems.filter(i => i.deliveryState === 'SENT' || i.deliveryState === 'ACKNOWLEDGED').length} Sent
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  disabled={syncingNow}
+                  onClick={async () => {
+                    setSyncingNow(true);
+                    await offlineQueue.flush(true);
+                    await fetchState();
+                    refreshNetworkState();
+                    setSyncingNow(false);
+                  }}
+                  className="px-2.5 py-1 rounded bg-[#0F172A] text-white text-[10px] font-bold"
+                >
+                  {syncingNow ? 'Syncing...' : 'Sync Now'}
+                </button>
+                <button
+                  onClick={() => offlineQueue.clearCompleted()}
+                  className="px-2 py-1 rounded bg-[#F3F5F8] text-[#5B6777] text-[10px] font-semibold"
+                >
+                  Clear Sent
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1 max-h-28 overflow-y-auto">
+              {outboxItems.slice(-4).map(item => (
+                <div key={item.id} className="flex items-center justify-between text-[10px] bg-[#F8FAFC] px-2.5 py-1.5 rounded border border-[#DCE2E8]">
+                  <span className="truncate font-medium text-[#111827] max-w-[60%]">{item.summary}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`px-1.5 py-0.2 rounded font-mono font-bold ${
+                      item.deliveryState === 'SENT' || item.deliveryState === 'ACKNOWLEDGED' ? 'bg-emerald-100 text-emerald-700' :
+                      item.deliveryState === 'FAILED' ? 'bg-red-100 text-red-700' :
+                      'bg-amber-100 text-amber-800'
+                    }`}>
+                      {item.deliveryState}
+                    </span>
+                    {item.deliveryState === 'FAILED' && (
+                      <button
+                        onClick={() => offlineQueue.retryFailed(item.id)}
+                        className="text-[#0284C7] font-bold underline"
+                      >
+                        Retry
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* INLINE PENDING COMMAND INSTRUCTIONS (1-TAP ACKNOWLEDGE) */}
         {unackedInstructions.length > 0 && (
@@ -550,7 +661,22 @@ export const RescuerPortal: React.FC = () => {
               INC-101 / INC-104
             </div>
 
-            <div ref={mapContainerRef} className="flex-1 w-full h-full min-h-[300px]" />
+            {(lowBandwidthMode || networkState === 'OFFLINE') ? (
+              <div className="flex-1 min-h-[260px] bg-[#0F172A] text-slate-200 flex flex-col items-center justify-center p-5 text-center space-y-2">
+                <WifiOff className="w-7 h-7 text-amber-400" />
+                <div className="text-xs font-bold text-white">
+                  {networkState === 'OFFLINE' ? 'Offline Mode — Map Tiles Paused' : '2G Low-Bandwidth Mode — Map Tiles Paused'}
+                </div>
+                <div className="text-[11px] font-mono text-slate-300">
+                  Target: {(targetIncident?.latitude || 12.312).toFixed(4)}° N, {(targetIncident?.longitude || 76.641).toFixed(4)}° E
+                </div>
+                <div className="text-[10px] text-slate-400 max-w-xs">
+                  Satellite tile downloads paused to preserve bandwidth for SOS, field alerts, and Command instructions.
+                </div>
+              </div>
+            ) : (
+              <div ref={mapContainerRef} className="flex-1 w-full h-full min-h-[300px]" />
+            )}
 
             {/* Bottom Map Legend Strip */}
             <div className="p-2.5 bg-white border-t border-[#E3E8ED] flex flex-wrap items-center justify-between text-[10px] text-[#64748B] gap-2">
@@ -763,11 +889,17 @@ export const RescuerPortal: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-[#64748B] uppercase">Field Observation Note</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-[#64748B] uppercase">Field Observation Note</label>
+                  <VoiceMicButton
+                    compact
+                    onTranscript={(t) => setReportNotes(prev => prev ? `${prev} ${t}` : t)}
+                  />
+                </div>
                 <textarea
                   value={reportNotes}
                   onChange={(e) => setReportNotes(e.target.value)}
-                  placeholder="Additional field specifics or structural hazards..."
+                  placeholder="Additional field specifics or structural hazards (or tap mic to dictate)..."
                   rows={2}
                   className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] text-xs"
                 />
@@ -783,23 +915,33 @@ export const RescuerPortal: React.FC = () => {
               </button>
               <button
                 onClick={async () => {
+                  const repPayload = {
+                    incident_id: targetIncident?.id || 'INC-101',
+                    resource_id: currentUnit?.id || 'R-04',
+                    casualties: reportCasualties,
+                    assessment: reportAssessment,
+                    road_condition: reportRoadCondition,
+                    notes: reportNotes
+                  };
                   try {
                     const { api } = await import('../services/api');
-                    await api.submitFieldReport({
-                      incident_id: targetIncident?.id || 'INC-101',
-                      resource_id: currentUnit?.id || 'R-04',
-                      casualties: reportCasualties,
-                      assessment: reportAssessment,
-                      road_condition: reportRoadCondition,
-                      notes: reportNotes
-                    });
+                    await api.submitFieldReport(repPayload);
                     setActiveModal(null);
                     setStatusFeedback("On-site field report transmitted to Command Center & persisted.");
                   } catch (e: any) {
+                    await offlineQueue.enqueue({
+                      kind: 'field_report',
+                      incidentId: repPayload.incident_id,
+                      sender: repPayload.resource_id,
+                      recipient: 'SEOC-COMMAND',
+                      summary: `Field Report (${repPayload.incident_id}): ${repPayload.assessment.slice(0, 35)}`,
+                      payload: repPayload
+                    });
+                    refreshNetworkState();
                     setActiveModal(null);
-                    setStatusFeedback("Report transmission logged locally.");
+                    setStatusFeedback("Network offline — field report queued locally for automatic sync.");
                   }
-                  setTimeout(() => setStatusFeedback(null), 4000);
+                  setTimeout(() => setStatusFeedback(null), 4500);
                 }}
                 className="flex-1 py-2 text-xs font-semibold text-white bg-[#F26536] hover:bg-[#E05322] rounded-xl transition shadow-xs"
               >
@@ -1037,11 +1179,17 @@ export const RescuerPortal: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-[11px] font-semibold text-[#64748B] uppercase">Situation Description</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-[#64748B] uppercase">Situation Description</label>
+                  <VoiceMicButton
+                    compact
+                    onTranscript={(t) => setNearbyDesc(prev => prev ? `${prev} ${t}` : t)}
+                  />
+                </div>
                 <textarea
                   value={nearbyDesc}
                   onChange={(e) => setNearbyDesc(e.target.value)}
-                  placeholder="Describe stranded civilians, structural danger, or access hazards..."
+                  placeholder="Describe stranded civilians, structural danger, or tap mic to speak..."
                   rows={2}
                   className="mt-1 w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] text-xs"
                 />
@@ -1122,8 +1270,12 @@ export const RescuerPortal: React.FC = () => {
                     });
                     setNearbyDesc('');
                     setActiveModal('comms');
-                    await fetchMissionMessages(missionId);
-                    setStatusFeedback(`Nearby emergency ${res?.incident?.id || ''} reported to Command Center.`);
+                    if (res?.queuedOffline) {
+                      setStatusFeedback('Network offline — nearby emergency queued locally. Command has NOT received it yet.');
+                    } else {
+                      await fetchMissionMessages(missionId);
+                      setStatusFeedback(`Nearby emergency ${res?.incident?.id || ''} reported to Command Center.`);
+                    }
                     setTimeout(() => setStatusFeedback(null), 5000);
                   } catch (e) {
                     setStatusFeedback('Failed to transmit field alert. Please retry.');
@@ -1227,8 +1379,17 @@ export const RescuerPortal: React.FC = () => {
               )}
             </div>
 
+            {/* Voice Transcription Disclosure */}
+            <div className="px-3 py-1.5 bg-[#F8FAFC] border-t border-[#E3E8ED] text-[10px] text-[#64748B]">
+              Voice-to-text uses device speech service (offline requires device language pack). Review &amp; edit before sending.
+            </div>
+
             {/* Composer */}
             <div className="p-3 border-t border-[#E3E8ED] bg-white rounded-b-2xl flex items-center gap-2">
+              <VoiceMicButton
+                compact
+                onTranscript={(t) => setChatInput(prev => prev ? `${prev} ${t}` : t)}
+              />
               <input
                 type="text"
                 value={chatInput}
@@ -1236,7 +1397,7 @@ export const RescuerPortal: React.FC = () => {
                 onKeyDown={async (e) => {
                   if (e.key === 'Enter' && chatInput.trim() && !chatSending) {
                     setChatSending(true);
-                    await sendMissionMessage(missionId, {
+                    const res = await sendMissionMessage(missionId, {
                       sender_id: currentUnit?.id || 'R-04',
                       sender_name: currentUnit?.name || 'Unit R-04',
                       sender_role: 'rescuer',
@@ -1246,9 +1407,12 @@ export const RescuerPortal: React.FC = () => {
                     });
                     setChatInput('');
                     setChatSending(false);
+                    if (res?.queuedOffline) {
+                      setStatusFeedback('Message queued offline — will transmit automatically when connected.');
+                    }
                   }
                 }}
-                placeholder="Send status update or question to Command..."
+                placeholder="Speak or type message to Command..."
                 className="flex-1 p-2.5 rounded-xl border border-[#E3E8ED] bg-[#F8FAFC] text-xs focus:outline-none focus:border-[#F26536]"
               />
               <button
@@ -1256,7 +1420,7 @@ export const RescuerPortal: React.FC = () => {
                 onClick={async () => {
                   if (!chatInput.trim()) return;
                   setChatSending(true);
-                  await sendMissionMessage(missionId, {
+                  const res = await sendMissionMessage(missionId, {
                     sender_id: currentUnit?.id || 'R-04',
                     sender_name: currentUnit?.name || 'Unit R-04',
                     sender_role: 'rescuer',
@@ -1266,11 +1430,64 @@ export const RescuerPortal: React.FC = () => {
                   });
                   setChatInput('');
                   setChatSending(false);
+                  if (res?.queuedOffline) {
+                    setStatusFeedback('Message queued offline — will transmit automatically when connected.');
+                  }
                 }}
                 className="px-3.5 py-2.5 rounded-xl bg-[#F26536] hover:bg-[#E05322] disabled:opacity-50 text-white text-xs font-bold flex items-center gap-1.5 transition"
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Send</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: BACKEND SERVER URL SETTINGS (FOR PHYSICAL ANDROID DEVICE) */}
+      {activeModal === 'server' && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-[#E3E8ED] max-w-sm w-full p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#E3E8ED] pb-3">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-[#0284C7]" />
+                <h3 className="text-sm font-bold text-[#17212B]">ATLAS Server Endpoint</h3>
+              </div>
+              <button onClick={() => setActiveModal(null)} className="text-[#64748B] hover:text-[#17212B] font-bold">✕</button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <p className="text-[11px] text-[#64748B]">
+                On a physical Android phone, set this to your backend machine&apos;s LAN IP (e.g. <code className="font-mono bg-[#F3F5F8] px-1 rounded">http://192.168.1.5:8000/api</code>) or emulator <code className="font-mono bg-[#F3F5F8] px-1 rounded">http://10.0.2.2:8000/api</code>.
+              </p>
+              <input
+                type="url"
+                value={serverUrlInput}
+                onChange={(e) => setServerUrlInput(e.target.value)}
+                placeholder="http://192.168.1.5:8000/api"
+                className="w-full p-2.5 rounded-lg border border-[#E3E8ED] bg-[#F8FAFC] font-mono text-xs"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-[#E3E8ED]">
+              <button
+                onClick={() => setActiveModal(null)}
+                className="flex-1 py-2 text-xs font-semibold text-[#64748B] bg-[#F5F7F9] rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setApiBase(serverUrlInput);
+                  setActiveModal(null);
+                  setStatusFeedback(`Server URL updated to ${getApiBase()}`);
+                  await fetchState();
+                  await fetchFieldAlerts();
+                  setTimeout(() => setStatusFeedback(null), 4000);
+                }}
+                className="flex-1 py-2 text-xs font-bold text-white bg-[#0F172A] rounded-xl"
+              >
+                Save &amp; Reconnect
               </button>
             </div>
           </div>

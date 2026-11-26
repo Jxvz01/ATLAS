@@ -98,3 +98,53 @@ def test_field_discovery_to_command_decision_and_acknowledgment():
     thread_after = client.get(f"/api/missions/{mission_id}/messages").json()
     acked_msg = next(m for m in thread_after if m["id"] == instruction_id)
     assert acked_msg["acknowledged"] is True
+
+
+def test_offline_retry_idempotency_for_messages_and_field_alerts():
+    """
+    Verifies that retrying a mission message or field alert with the same client_id
+    does NOT create duplicate messages or duplicate secondary incidents.
+    """
+    unique_tag = uuid.uuid4().hex[:6].upper()
+    mission_id = f"ASG-IDEM-{unique_tag}"
+    msg_client_id = f"MSG-Q-{unique_tag}"
+    alert_client_id = f"ALT-Q-{unique_tag}"
+
+    # 1. Send message twice with identical client_id
+    msg_payload = {
+        "sender_id": "R-04",
+        "sender_name": "NDRF Boat Team Alpha",
+        "sender_role": "rescuer",
+        "message_type": "chat",
+        "content": "Idempotency check message",
+        "priority": "Normal",
+        "client_id": msg_client_id
+    }
+    r1 = client.post(f"/api/missions/{mission_id}/messages", json=msg_payload)
+    r2 = client.post(f"/api/missions/{mission_id}/messages", json=msg_payload)
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["id"] == msg_client_id
+    assert r2.json()["id"] == msg_client_id
+
+    msgs = [m for m in client.get(f"/api/missions/{mission_id}/messages").json() if m["id"] == msg_client_id]
+    assert len(msgs) == 1
+
+    # 2. Send field alert twice with identical client_id
+    alert_payload = {
+        "rescuer_id": "R-04",
+        "rescuer_name": "NDRF Boat Team Alpha",
+        "active_assignment_id": mission_id,
+        "original_incident_id": "INC-101",
+        "emergency_type": "Road Blockage",
+        "description": f"Idempotent nearby hazard [{unique_tag}]",
+        "latitude": 12.3150,
+        "longitude": 76.6440,
+        "urgency": "High",
+        "client_id": alert_client_id
+    }
+    a1 = client.post("/api/field-alerts", json=alert_payload)
+    a2 = client.post("/api/field-alerts", json=alert_payload)
+    assert a1.status_code == 200 and a2.status_code == 200
+    assert a1.json()["alert"]["id"] == alert_client_id
+    assert a2.json()["alert"]["id"] == alert_client_id
+    assert a2.json().get("idempotent_replay") is True

@@ -1,0 +1,12 @@
+{
+  "appId": "org.atlas.field",
+  "appName": "ATLAS FIELD",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

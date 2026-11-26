@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert, FieldAlert, MissionMessage } from '../types/atlas';
 import { api } from '../services/api';
+import { networkMonitor, NetworkState } from '../services/networkMonitor';
+import { offlineQueue } from '../services/offlineQueue';
 
 interface AtlasStore {
   state: ScenarioState | null;
@@ -15,10 +17,14 @@ interface AtlasStore {
   lastSyncedAt: string | null;
   syncLatencyMs: number | null;
   isOffline: boolean;
+  networkState: NetworkState;
+  lowBandwidthMode: boolean;
   openData: any | null;
   osmInfrastructure: any | null;
   
   fetchState: () => Promise<void>;
+  refreshNetworkState: () => void;
+  toggleLowBandwidthMode: () => void;
   fetchOpenData: (includeOsm?: boolean) => Promise<void>;
   fetchOsmInfrastructure: () => Promise<void>;
   setSelectedIncident: (id: string | null) => void;
@@ -44,7 +50,7 @@ interface AtlasStore {
   fetchFieldAlerts: () => Promise<void>;
   fetchMissionMessages: (missionId: string) => Promise<void>;
   submitFieldAlert: (data: any) => Promise<any>;
-  sendMissionMessage: (missionId: string, data: any) => Promise<void>;
+  sendMissionMessage: (missionId: string, data: any) => Promise<any>;
   acknowledgeMessage: (messageId: string) => Promise<void>;
   updateFieldAlertDecision: (alertId: string, decision: any) => Promise<void>;
 
@@ -70,18 +76,38 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
   lastSyncedAt: null,
   syncLatencyMs: null,
   isOffline: false,
+  networkState: networkMonitor.getState(),
+  lowBandwidthMode: networkMonitor.isManualLowBandwidth(),
   openData: null,
   osmInfrastructure: null,
+
+  refreshNetworkState: () => {
+    set({
+      networkState: networkMonitor.getState(),
+      isOffline: networkMonitor.getState() === 'OFFLINE',
+    });
+  },
+
+  toggleLowBandwidthMode: () => {
+    const next = !get().lowBandwidthMode;
+    networkMonitor.setManualLowBandwidth(next);
+    set({
+      lowBandwidthMode: next,
+      networkState: networkMonitor.getState(),
+    });
+  },
 
   fetchState: async () => {
     const started = performance.now();
     try {
       const data = await api.getScenarioState();
       const latency = Math.round(performance.now() - started);
+      networkMonitor.recordSuccess(latency);
       set({
         state: data,
         error: null,
         isOffline: false,
+        networkState: networkMonitor.getState(),
         syncLatencyMs: latency,
         lastSyncedAt: new Date().toISOString()
       });
@@ -90,9 +116,11 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
         get().evaluateIncident(currentSelected);
       }
     } catch (err: any) {
+      networkMonitor.recordFailure();
       set({
         error: err.message || 'Failed to fetch ATLAS state',
-        isOffline: true
+        isOffline: true,
+        networkState: networkMonitor.getState()
       });
     }
   },
@@ -149,8 +177,17 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
   },
 
   updateAssignmentStatus: async (assignmentId, status) => {
-    await api.updateAssignment(assignmentId, status);
-    await get().fetchState();
+    try {
+      await api.updateAssignment(assignmentId, status);
+      await get().fetchState();
+    } catch (e) {
+      await offlineQueue.enqueue({
+        kind: 'assignment_status',
+        summary: `Mission status → ${status}`,
+        payload: { assignment_id: assignmentId, status }
+      });
+      get().refreshNetworkState();
+    }
   },
 
   updateHospitalCapacity: async (hospitalId, data) => {
@@ -216,21 +253,62 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
   },
 
   submitFieldAlert: async (data: any) => {
-    const res = await api.submitFieldAlert(data);
-    await get().fetchFieldAlerts();
-    await get().fetchState();
-    return res;
+    const clientId = `ALT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    try {
+      const res = await api.submitFieldAlert({ ...data, client_id: clientId });
+      await get().fetchFieldAlerts();
+      await get().fetchState();
+      return { ...res, queuedOffline: false };
+    } catch (e) {
+      const q = await offlineQueue.enqueue({
+        id: clientId,
+        kind: 'field_alert',
+        missionId: data.active_assignment_id,
+        incidentId: data.original_incident_id,
+        sender: data.rescuer_id,
+        recipient: 'SEOC-COMMAND',
+        summary: `Nearby ${data.emergency_type}: ${data.description.slice(0, 45)}`,
+        payload: data
+      });
+      get().refreshNetworkState();
+      return { queuedOffline: true, queueItem: q };
+    }
   },
 
   sendMissionMessage: async (missionId: string, data: any) => {
-    await api.sendMissionMessage(missionId, data);
-    await get().fetchMissionMessages(missionId);
+    const clientId = `MSG-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    try {
+      await api.sendMissionMessage(missionId, { ...data, client_id: clientId });
+      await get().fetchMissionMessages(missionId);
+      return { queuedOffline: false };
+    } catch (e) {
+      const q = await offlineQueue.enqueue({
+        id: clientId,
+        kind: 'mission_message',
+        missionId,
+        sender: data.sender_id,
+        recipient: 'SEOC-COMMAND',
+        summary: data.content.slice(0, 50),
+        payload: data
+      });
+      get().refreshNetworkState();
+      return { queuedOffline: true, queueItem: q };
+    }
   },
 
   acknowledgeMessage: async (messageId: string) => {
-    await api.acknowledgeMessage(messageId);
     const msgs = get().missionMessages.map(m => m.id === messageId ? { ...m, acknowledged: true } : m);
     set({ missionMessages: msgs });
+    try {
+      await api.acknowledgeMessage(messageId);
+    } catch (e) {
+      await offlineQueue.enqueue({
+        kind: 'message_ack',
+        summary: `Ack instruction ${messageId}`,
+        payload: { message_id: messageId }
+      });
+      get().refreshNetworkState();
+    }
   },
 
   updateFieldAlertDecision: async (alertId: string, decision: any) => {

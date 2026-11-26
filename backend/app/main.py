@@ -890,6 +890,7 @@ class CreateFieldAlertRequest(BaseModel):
     requires_medical: bool = False
     hazard_info: Optional[str] = None
     urgency: str = "High"
+    client_id: Optional[str] = None
 
 class UpdateFieldAlertDecisionRequest(BaseModel):
     status: str # Acknowledged, Combined, Separate Unit Assigned, Dismissed
@@ -905,6 +906,7 @@ class CreateMissionMessageRequest(BaseModel):
     content: str
     priority: str = "Normal" # Normal, Priority, Urgent
     message_type: str = "chat" # chat, instruction, alert, acknowledgment
+    client_id: Optional[str] = None
 
 @app.get("/api/field-alerts")
 def list_field_alerts(rescuer_id: Optional[str] = None):
@@ -918,7 +920,15 @@ def create_field_alert(req: CreateFieldAlertRequest):
     from datetime import datetime
     from app.engine import calculate_priority_score
 
-    alert_id = f"ALT-{uuid.uuid4().hex[:6].upper()}"
+    # Idempotency guard for offline retries
+    if req.client_id:
+        existing_alerts = db_store.list_field_alerts(rescuer_id=req.rescuer_id)
+        for ea in existing_alerts:
+            if ea.get("id") == req.client_id:
+                inc_obj = db.incidents.get(ea.get("new_incident_id", ""))
+                return {"alert": ea, "incident": inc_obj.dict() if inc_obj else {"id": ea.get("new_incident_id")}, "idempotent_replay": True}
+
+    alert_id = req.client_id or f"ALT-{uuid.uuid4().hex[:6].upper()}"
     new_inc_id = f"INC-FLD-{uuid.uuid4().hex[:4].upper()}"
 
     # Default coordinates to original incident if rescuer omitted GPS
@@ -1056,7 +1066,14 @@ def send_mission_message(mission_id: str, req: CreateMissionMessageRequest):
     import uuid
     from datetime import datetime
 
-    msg_id = f"MSG-{uuid.uuid4().hex[:6].upper()}"
+    # Idempotency guard for offline queue retries
+    if req.client_id:
+        existing_msgs = db_store.list_mission_messages(mission_id=mission_id)
+        for em in existing_msgs:
+            if em.get("id") == req.client_id:
+                return em
+
+    msg_id = req.client_id or f"MSG-{uuid.uuid4().hex[:6].upper()}"
     msg_dict = {
         "id": msg_id,
         "mission_id": mission_id,

@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAtlasStore } from './store/atlasStore';
+import { networkMonitor } from './services/networkMonitor';
+import { offlineQueue } from './services/offlineQueue';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LandingPage } from './pages/LandingPage';
 import { AdminLogin } from './pages/AdminLogin';
@@ -12,19 +14,39 @@ import { RescuerPortal } from './pages/RescuerPortal';
 import { CitizenApp } from './pages/CitizenApp';
 
 export const App: React.FC = () => {
-  const { fetchState } = useAtlasStore();
+  const { fetchState, refreshNetworkState } = useAtlasStore();
 
   useEffect(() => {
-    // Initial state fetch
+    // Initial state fetch & queue flush
     fetchState();
+    offlineQueue.flush();
 
-    // Cross-portal synchronization interval (1.5s real-time heartbeat)
-    const interval = setInterval(() => {
-      fetchState();
-    }, 1500);
+    const handleOnline = () => {
+      refreshNetworkState();
+      offlineQueue.flush(true).then(() => fetchState());
+    };
+    const handleOffline = () => refreshNetworkState();
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
-    return () => clearInterval(interval);
-  }, [fetchState]);
+    // Adaptive polling based on ONLINE / LOW_BANDWIDTH (2G) / OFFLINE
+    let timer: any;
+    const scheduleNext = () => {
+      const intervalMs = networkMonitor.getAdaptivePollIntervalMs();
+      timer = setTimeout(async () => {
+        await fetchState();
+        await offlineQueue.flush();
+        scheduleNext();
+      }, intervalMs);
+    };
+    scheduleNext();
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [fetchState, refreshNetworkState]);
 
   return (
     <BrowserRouter>

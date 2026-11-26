@@ -1,10 +1,49 @@
 import axios from 'axios';
 import { ScenarioState, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert, IncomingPatient, Shelter, FieldAlert, MissionMessage } from '../types/atlas';
+import { networkMonitor } from './networkMonitor';
+
+const DEFAULT_API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:8000/api';
+
+export function getApiBase(): string {
+  return localStorage.getItem('atlas_api_base') || DEFAULT_API_BASE;
+}
+
+export function setApiBase(url: string): void {
+  const cleaned = url.trim().replace(/\/+$/, '');
+  if (cleaned) {
+    localStorage.setItem('atlas_api_base', cleaned);
+  } else {
+    localStorage.removeItem('atlas_api_base');
+  }
+}
+
+// Configure resilient HTTP defaults for degraded 2G/offline conditions
+axios.defaults.timeout = 12000;
+
+axios.interceptors.request.use((config) => {
+  const base = getApiBase();
+  if (config.url && config.url.startsWith('http://localhost:8000/api')) {
+    config.url = config.url.replace('http://localhost:8000/api', base);
+  }
+  (config as any)._startedAt = performance.now();
+  return config;
+});
+
+axios.interceptors.response.use(
+  (response) => {
+    const started = (response.config as any)?._startedAt;
+    if (started) {
+      networkMonitor.recordSuccess(Math.round(performance.now() - started));
+    }
+    return response;
+  },
+  (error) => {
+    networkMonitor.recordFailure();
+    return Promise.reject(error);
+  }
+);
 
 const API_BASE = 'http://localhost:8000/api';
-
-// Configure resilient HTTP defaults for degraded network conditions
-axios.defaults.timeout = 12000;
 
 export const api = {
   getScenarioState: async (): Promise<ScenarioState> => {
