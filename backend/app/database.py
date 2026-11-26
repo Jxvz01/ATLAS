@@ -157,11 +157,7 @@ class StateStore:
         for r in self.seed_raw.get("resources", []):
             self.resources[r["id"]] = Resource(**r)
 
-        # Load incidents
-        seed_incident_ids = set()
-        for inc in self.seed_raw.get("incidents", []):
-            self.incidents[inc["id"]] = Incident(**inc)
-            seed_incident_ids.add(inc["id"])
+        # Incidents are hydrated strictly from Supabase PostgreSQL (never injected from seed_data.json)
 
         # Load blockages
         for b in self.seed_raw.get("road_blockages", []):
@@ -273,13 +269,13 @@ class StateStore:
                     )
 
                 # 8. Activity Logs from Incident Events
-                ev_rows = session.query(IncidentEventModel).order_by(IncidentEventModel.timestamp.desc()).limit(50).all()
+                ev_rows = session.query(IncidentEventModel).order_by(IncidentEventModel.created_at.desc()).limit(50).all()
                 if ev_rows:
                     self.activity_logs = [
                         ActivityLog(
                             id=e.id, event_type=e.event_type,
                             message=e.reason or f"{e.event_type} on {e.entity_id}",
-                            entity_id=e.entity_id, created_at=e.timestamp
+                            entity_id=e.entity_id, created_at=e.created_at
                         )
                         for e in ev_rows
                     ]

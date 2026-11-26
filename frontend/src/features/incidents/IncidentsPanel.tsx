@@ -14,35 +14,14 @@ import {
 import { useAtlasStore } from '../../store/atlasStore';
 import { Incident } from '../../types/atlas';
 
-const DEMO_SEED_IDS = new Set(['INC-101', 'INC-102', 'INC-103', 'INC-104', 'INC-105']);
-const TEST_ARTIFACT_PATTERNS = [
-  'UNIFIED-E2E-SOS-',
-  'LIVE-RELEASE-CHECK-',
-  'API Integration Test',
-  'FIELD ALERT from NDRF Boat Team Alpha',
-  'FIELD ALERT from Boat Team Bravo',
-  'Rising floodwaters in Kuvempunagar residential enclave.',
-  'Family cut off by flash floods near canal.',
-  'Water rapidly rising inside ground floor.',
-];
-
-function isDemoOrTestIncident(inc: Incident): boolean {
-  if (DEMO_SEED_IDS.has(inc.id)) return true;
-  const desc = inc.description || '';
-  return TEST_ARTIFACT_PATTERNS.some((p) => desc.includes(p));
-}
-
 export const IncidentsPanel: React.FC = () => {
   const { state, selectedIncidentId, setSelectedIncident, updateIncident } = useAtlasStore();
   const [filter, setFilter] = useState<'All' | 'Critical' | 'High' | 'Active' | 'Resolved'>('All');
-  const [showDemoArchive, setShowDemoArchive] = useState<boolean>(false);
 
   const incidents = state?.incidents || [];
-  const demoCount = incidents.filter(isDemoOrTestIncident).length;
 
   const filteredIncidents = incidents
     .filter(inc => {
-      if (!showDemoArchive && isDemoOrTestIncident(inc)) return false;
       if (filter === 'Critical') return inc.priority_level === 'Critical';
       if (filter === 'High') return inc.priority_level === 'High' || inc.priority_level === 'Critical';
       if (filter === 'Active') return inc.status === 'Active' || inc.status === 'Assigned' || inc.status === 'In Progress';
@@ -69,15 +48,6 @@ export const IncidentsPanel: React.FC = () => {
               {filteredIncidents.length}
             </span>
           </div>
-          {demoCount > 0 && (
-            <button
-              onClick={() => setShowDemoArchive(v => !v)}
-              className="text-[10px] font-mono px-2 py-0.5 rounded border border-steel/60 text-gray-400 hover:text-coolwhite"
-              title="Toggle seeded/test incidents"
-            >
-              {showDemoArchive ? 'Hide Test/Demo' : `Archived (${demoCount})`}
-            </button>
-          )}
         </div>
 
         {/* Filters */}

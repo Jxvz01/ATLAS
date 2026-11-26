@@ -66,7 +66,17 @@ def test_geospatial_distance_and_routing():
 
 def test_engine_incident_assignment():
     db.reset_scenario()
-    inc = db.incidents["INC-101"] # Flooding -> requires water_rescue
+    inc = {
+        "id": "INC-TEST-FLOOD",
+        "type": "Flooding",
+        "description": "Unit test flood incident",
+        "latitude": 12.305,
+        "longitude": 76.635,
+        "severity": 5,
+        "urgency": 5,
+        "affected_population": 4,
+        "required_capabilities": ["water_rescue"],
+    }
     res_list = []
     for r in db.resources.values():
         d = r.dict()
@@ -74,7 +84,7 @@ def test_engine_incident_assignment():
         res_list.append(d)
     blk_list = [b.dict() for b in db.road_blockages.values()]
 
-    result = evaluate_incident_assignment(inc.dict(), res_list, blk_list)
+    result = evaluate_incident_assignment(inc, res_list, blk_list)
     assert result.recommended_resource_id in ["R-01", "R-04"] # Must be a water rescue unit
     assert "water_rescue" in result.explanation or "matches required capabilities" in result.explanation
 
@@ -92,8 +102,12 @@ def test_recomputation_no_double_assignment():
 def test_scenario_reset():
     db.reset_scenario()
     initial_inc_count = len(db.incidents)
+    from app.database import Incident
     # Mutate state
-    db.incidents["INC-999"] = db.incidents["INC-101"].copy()
+    db.incidents["INC-999"] = Incident(
+        id="INC-999", type="Flooding", description="Temp test", latitude=12.3, longitude=76.6,
+        severity=3, urgency=3, confidence=1.0, affected_population=1
+    )
     assert len(db.incidents) == initial_inc_count + 1
     # Reset
     db.reset_scenario()
