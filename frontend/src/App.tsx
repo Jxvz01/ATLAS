@@ -48,12 +48,18 @@ export const App: React.FC = () => {
     };
   }, [fetchState, refreshNetworkState]);
 
+  const APP_MODE = (import.meta as any).env?.VITE_APP_MODE || 'web';
+  const rootElement =
+    APP_MODE === 'civilian' ? <CitizenApp /> :
+    APP_MODE === 'rescuer' ? <Navigate to="/rescue/login" replace /> :
+    <LandingPage />;
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-[#F5F7F9] text-[#17212B] font-sans antialiased">
         <Routes>
           {/* Public Gateway & Authentication Pages */}
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={rootElement} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/hospital/login" element={<HospitalLogin />} />
           <Route path="/rescue/login" element={<RescuerLogin />} />
@@ -86,7 +92,7 @@ export const App: React.FC = () => {
           <Route
             path="/rescue/dashboard"
             element={
-              <ProtectedRoute allowedRoles={['rescuer']}>
+              <ProtectedRoute allowedRoles={['rescuer']} redirectPath={APP_MODE === 'rescuer' ? '/rescue/login' : '/'}>
                 <RescuerPortal />
               </ProtectedRoute>
             }

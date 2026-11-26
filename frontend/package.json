@@ -20,6 +20,7 @@
     "@capacitor-community/speech-recognition": "^7.0.1",
     "@capacitor/android": "^8.6.3",
     "@capacitor/core": "^8.6.3",
+    "@capacitor/geolocation": "^8.2.5",
     "autoprefixer": "^10.7.0",
     "axios": "^1.21.1",
     "lucide-react": "^1.77.0",

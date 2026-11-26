@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { Geolocation } from '@capacitor/geolocation';
 import { useAtlasStore } from '../store/atlasStore';
 import { Incident } from '../types/atlas';
 
@@ -44,8 +45,12 @@ export const CitizenApp: React.FC = () => {
 
   // SOS Form States (Step 1 -> 4)
   const [selectedEmergency, setSelectedEmergency] = useState<string>('Flooding');
-  const [locationName, setLocationName] = useState<string>('Vijayanagar, Mysuru');
-  const [locationCoords, setLocationCoords] = useState<[number, number]>([12.3180, 76.6430]);
+  const [locationName, setLocationName] = useState<string>('Acquiring GPS location...');
+  const [locationCoords, setLocationCoords] = useState<[number, number] | null>(null);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [locationTimestamp, setLocationTimestamp] = useState<string | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'acquiring' | 'locked' | 'denied' | 'unavailable'>('idle');
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [locationMode, setLocationMode] = useState<'gps' | 'map' | 'manual'>('gps');
 
   // Step 3 Details
@@ -139,20 +144,94 @@ export const CitizenApp: React.FC = () => {
     { id: 'Other', label: 'Other', icon: '•••' }
   ];
 
+  // Capture real device GPS location (Capacitor Geolocation on Android, navigator.geolocation fallback on web)
+  const captureDeviceLocation = async () => {
+    setLocationStatus('acquiring');
+    setLocationError(null);
+    setLocationMode('gps');
+    try {
+      let coords: { latitude: number; longitude: number; accuracy?: number | null } | null = null;
+      let ts = Date.now();
+
+      try {
+        await Geolocation.requestPermissions();
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+        coords = pos.coords;
+        ts = pos.timestamp || ts;
+      } catch (capErr: any) {
+        const msg = String(capErr?.message || capErr || '');
+        if (/denied|permission/i.test(msg)) {
+          throw { code: 1, message: msg };
+        }
+        // Web fallback
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: true,
+              timeout: 15000,
+              maximumAge: 0,
+            });
+          });
+          coords = pos.coords;
+          ts = pos.timestamp || ts;
+        } else {
+          throw capErr;
+        }
+      }
+
+      if (!coords || !Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) {
+        throw new Error('Invalid GPS coordinates received.');
+      }
+
+      setLocationCoords([coords.latitude, coords.longitude]);
+      setLocationAccuracy(coords.accuracy ? Math.round(coords.accuracy) : null);
+      setLocationTimestamp(new Date(ts).toISOString());
+      setLocationName(`GPS ${coords.latitude.toFixed(5)}°, ${coords.longitude.toFixed(5)}°`);
+      setLocationStatus('locked');
+    } catch (err: any) {
+      const msg = String(err?.message || err || '');
+      if (err?.code === 1 || /denied|permission/i.test(msg)) {
+        setLocationStatus('denied');
+        setLocationError('Location permission denied. Enable GPS permission in Android Settings or enter coordinates manually.');
+      } else {
+        setLocationStatus('unavailable');
+        setLocationError('Unable to acquire GPS fix. Turn on device Location Services and tap Retry GPS, or enter coordinates manually.');
+      }
+    }
+  };
+
+  useEffect(() => {
+    if ((currentView === 'sos_1' || currentView === 'sos_2') && locationStatus === 'idle') {
+      captureDeviceLocation();
+    }
+  }, [currentView, locationStatus]);
+
   // Submit SOS to real backend
   const handleFinalSOSSubmit = async () => {
+    if (isSubmitting) return;
+    if (!locationCoords) {
+      setSubmitError('Valid GPS or manual coordinates are required before submitting SOS.');
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
     try {
+      const submittedAt = new Date().toISOString();
+      const gpsMeta = locationAccuracy != null ? `GPS ±${locationAccuracy}m` : `Mode: ${locationMode}`;
       const additionalNotes = [
         situationDetails,
         hasMedicalHelp ? 'Injured/Medical help needed' : '',
-        hasElderlyOrDisabled ? 'Elderly/Person with disability' : ''
+        hasElderlyOrDisabled ? 'Elderly/Person with disability' : '',
+        `[${gpsMeta} | ClientTime: ${submittedAt}]`
       ].filter(Boolean).join('. ');
 
       const res = await submitSOS({
         type: selectedEmergency,
-        description: `Citizen SOS in ${locationName}: ${additionalNotes}`,
+        description: `Citizen SOS (${locationName}): ${additionalNotes}`,
         latitude: locationCoords[0],
         longitude: locationCoords[1],
         affected_population: peopleAffected
@@ -168,9 +247,9 @@ export const CitizenApp: React.FC = () => {
       setActiveTrackingData({
         id: newId,
         type: res.type || selectedEmergency,
-        location: locationName,
-        eta: '~ 7 min',
-        team: 'Dispatched to Response Grid',
+        location: `${locationCoords[0].toFixed(5)}°, ${locationCoords[1].toFixed(5)}°`,
+        eta: 'Pending Dispatch',
+        team: 'Awaiting SEOC Assignment',
         status: 'Request Received',
         timeline: [
           { step: 'Request Received', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), done: true, active: true },
@@ -531,51 +610,95 @@ export const CitizenApp: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Recenter button */}
+                  {/* Recenter / Retry GPS button */}
                   <button
-                    onClick={() => alert("GPS lock verified: 12.3180° N, 76.6430° E")}
+                    onClick={captureDeviceLocation}
+                    title="Retry GPS Fix"
                     className="absolute bottom-2 right-2 p-2 rounded-full bg-white shadow-md border border-[#E1E7ED] text-[#18212B] active:scale-90 transition z-10"
                   >
-                    <Crosshair className="w-4 h-4 text-[#FF5A24]" />
+                    <Crosshair className={`w-4 h-4 text-[#FF5A24] ${locationStatus === 'acquiring' ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
 
+                {locationError && (
+                  <div className="mb-2.5 p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] text-red-700 flex items-start justify-between gap-2">
+                    <span>{locationError}</span>
+                    <button
+                      onClick={captureDeviceLocation}
+                      className="shrink-0 font-bold underline text-red-800"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
                 {/* Location Selection Options */}
                 <div className="space-y-2">
-                  {/* Verified GPS option */}
-                  <div className="p-3 bg-white rounded-xl border border-[#E1E7ED] flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-[#16865D]" />
-                      <span className="text-xs font-bold text-[#18212B]">{locationName}</span>
+                  {/* Live GPS Status */}
+                  <div className="p-3 bg-white rounded-xl border border-[#E1E7ED] flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <MapPin className={`w-4 h-4 shrink-0 ${locationStatus === 'locked' ? 'text-[#16865D]' : 'text-[#FF5A24]'}`} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-[#18212B] truncate">{locationName}</div>
+                        {locationTimestamp && (
+                          <div className="text-[10px] font-mono text-[#687789]">
+                            Captured {new Date(locationTimestamp).toLocaleTimeString()}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[10px] font-mono font-bold text-[#16865D] bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                      GPS: Accurate
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+                      locationStatus === 'locked'
+                        ? 'text-[#16865D] bg-emerald-50 border-emerald-200'
+                        : locationStatus === 'acquiring'
+                        ? 'text-amber-700 bg-amber-50 border-amber-200'
+                        : 'text-red-700 bg-red-50 border-red-200'
+                    }`}>
+                      {locationStatus === 'locked'
+                        ? `GPS${locationAccuracy ? ` ±${locationAccuracy}m` : ' Locked'}`
+                        : locationStatus === 'acquiring'
+                        ? 'Acquiring...'
+                        : locationStatus === 'denied'
+                        ? 'Denied'
+                        : 'Unavailable'}
                     </span>
                   </div>
 
-                  {/* Select on Map */}
+                  {/* Retry GPS */}
                   <button
-                    onClick={() => alert("Tap anywhere on the map to pin alternate location.")}
+                    onClick={captureDeviceLocation}
                     className="w-full p-3 bg-white rounded-xl border border-[#E1E7ED] hover:bg-[#F8FAFC] flex items-center justify-between text-left transition"
                   >
                     <div className="flex items-center gap-2.5 text-xs font-semibold text-[#18212B]">
-                      <Compass className="w-4 h-4 text-[#687789]" />
-                      <span>Select on Map</span>
+                      <Crosshair className="w-4 h-4 text-[#FF5A24]" />
+                      <span>Use Current Device GPS</span>
                     </div>
                     <ChevronRight className="w-4 h-4 text-[#687789]" />
                   </button>
 
-                  {/* Enter Manually */}
+                  {/* Enter Coordinates / Address Manually (Fallback only when GPS denied/unavailable) */}
                   <button
                     onClick={() => {
-                      const manual = prompt("Enter specific landmark or street address in Mysuru:", locationName);
-                      if (manual) setLocationName(manual);
+                      const raw = prompt("Enter coordinates as lat,lon (e.g. 12.3180, 76.6430):", locationCoords ? `${locationCoords[0]}, ${locationCoords[1]}` : '');
+                      if (!raw) return;
+                      const parts = raw.split(',').map(p => parseFloat(p.trim()));
+                      if (parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+                        setLocationCoords([parts[0], parts[1]]);
+                        setLocationAccuracy(null);
+                        setLocationTimestamp(new Date().toISOString());
+                        setLocationMode('manual');
+                        setLocationName(`Manual ${parts[0].toFixed(5)}°, ${parts[1].toFixed(5)}°`);
+                        setLocationStatus('locked');
+                        setLocationError(null);
+                      } else {
+                        alert('Invalid format. Enter latitude, longitude (example: 12.3180, 76.6430).');
+                      }
                     }}
                     className="w-full p-3 bg-white rounded-xl border border-[#E1E7ED] hover:bg-[#F8FAFC] flex items-center justify-between text-left transition"
                   >
                     <div className="flex items-center gap-2.5 text-xs font-semibold text-[#18212B]">
                       <FileText className="w-4 h-4 text-[#687789]" />
-                      <span>Enter Address Manually</span>
+                      <span>Enter Coordinates Manually (Fallback)</span>
                     </div>
                     <ChevronRight className="w-4 h-4 text-[#687789]" />
                   </button>
@@ -585,10 +708,11 @@ export const CitizenApp: React.FC = () => {
               {/* Next Step Action */}
               <div className="pt-4">
                 <button
+                  disabled={!locationCoords}
                   onClick={() => setCurrentView('sos_3')}
-                  className="w-full py-3.5 rounded-2xl bg-[#FF5A24] hover:bg-[#E04D1B] active:scale-98 text-white font-bold text-sm shadow-md shadow-orange-500/20 transition flex items-center justify-center gap-2"
+                  className="w-full py-3.5 rounded-2xl bg-[#FF5A24] hover:bg-[#E04D1B] disabled:opacity-40 active:scale-98 text-white font-bold text-sm shadow-md shadow-orange-500/20 transition flex items-center justify-center gap-2"
                 >
-                  <span>Next</span>
+                  <span>{locationCoords ? 'Next' : 'Waiting for GPS Location...'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
