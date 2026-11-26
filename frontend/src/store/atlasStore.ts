@@ -21,6 +21,8 @@ interface AtlasStore {
   lowBandwidthMode: boolean;
   openData: any | null;
   osmInfrastructure: any | null;
+  nextImpactPrediction: any | null;
+  setNextImpactPrediction: (pred: any | null) => void;
   
   fetchState: () => Promise<void>;
   refreshNetworkState: () => void;
@@ -80,6 +82,8 @@ export const useAtlasStore = create<AtlasStore>((set, get) => ({
   lowBandwidthMode: networkMonitor.isManualLowBandwidth(),
   openData: null,
   osmInfrastructure: null,
+  nextImpactPrediction: null,
+  setNextImpactPrediction: (pred) => set({ nextImpactPrediction: pred }),
 
   refreshNetworkState: () => {
     set({

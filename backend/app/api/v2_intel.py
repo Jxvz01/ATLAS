@@ -162,6 +162,60 @@ def ai_operational_briefing():
     return groq_service.generate_operational_briefing(snapshot)
 
 
+@router.post("/ai/predict-next-impact")
+def ai_predict_next_impact():
+    active_incidents = sorted(
+        [i for i in db.incidents.values() if i.status != "Resolved"],
+        key=lambda x: x.created_at or "",
+        reverse=True,
+    )
+    weather = None
+    eonet = None
+    try:
+        weather = open_data_service.fetch_open_meteo_weather()
+    except Exception:
+        pass
+    try:
+        eonet = open_data_service.fetch_nasa_eonet_events()
+    except Exception:
+        pass
+
+    context = {
+        "active_incidents": [
+            {
+                "id": i.id,
+                "type": i.type,
+                "priority_level": i.priority_level,
+                "severity": i.severity,
+                "urgency": i.urgency,
+                "status": i.status,
+                "latitude": i.latitude,
+                "longitude": i.longitude,
+                "affected_population": i.affected_population,
+                "source": i.source,
+                "created_at": i.created_at,
+                "description": i.description[:220],
+            }
+            for i in active_incidents[:15]
+        ],
+        "weather": weather,
+        "hazards": db.hazards,
+        "active_road_blockages": [
+            {
+                "id": b.id,
+                "road_id": b.road_id,
+                "latitude": b.latitude,
+                "longitude": b.longitude,
+                "reason": b.reason,
+            }
+            for b in db.road_blockages.values()
+            if b.status == "Active"
+        ],
+        "eonet_events": (eonet or {}).get("events", [])[:5] if isinstance(eonet, dict) else [],
+    }
+    return groq_service.predict_next_impact(context)
+
+
 @router.post("/ai/analyze-field-report")
 def ai_analyze_field_report(req: FieldReportAnalysisRequest):
     return groq_service.analyze_field_report(req.dict())

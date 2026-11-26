@@ -88,7 +88,8 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
     evaluationResult,
     fieldAlerts,
     openData,
-    osmInfrastructure
+    osmInfrastructure,
+    nextImpactPrediction
   } = useAtlasStore();
 
   // Basemap style URLs
@@ -854,7 +855,82 @@ export const SatelliteMapView: React.FC<SatelliteMapViewProps> = ({
       });
     }
 
-  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts, osmInfrastructure, openData, geoMode]);
+    // 9. AI Predicted Next Impact Zone (distinct purple dashed projection, never mixed with verified incidents)
+    const pred = nextImpactPrediction?.available ? nextImpactPrediction?.prediction : null;
+    const pz = pred?.sufficient_data !== false ? pred?.predicted_zone : null;
+    if (pz && typeof pz.center_lat === 'number' && typeof pz.center_lon === 'number') {
+      const radiusKm = Math.max(0.4, Math.min(25, Number(pz.radius_km) || 1.5));
+      const pts: [number, number][] = [];
+      for (let i = 0; i <= 48; i++) {
+        const ang = (i / 48) * 2 * Math.PI;
+        const dLat = (radiusKm / 111.32) * Math.sin(ang);
+        const dLon = (radiusKm / (111.32 * Math.cos((pz.center_lat * Math.PI) / 180))) * Math.cos(ang);
+        pts.push([pz.center_lon + dLon, pz.center_lat + dLat]);
+      }
+      const features: any[] = [
+        {
+          type: 'Feature',
+          geometry: { type: 'Polygon', coordinates: [pts] },
+          properties: { label: pred.location || 'Predicted Next Impact' }
+        }
+      ];
+      if (typeof pz.direction_bearing_deg === 'number') {
+        const rad = (pz.direction_bearing_deg * Math.PI) / 180;
+        const arrowKm = radiusKm * 1.4;
+        const endLat = pz.center_lat + (arrowKm / 111.32) * Math.cos(rad);
+        const endLon = pz.center_lon + (arrowKm / (111.32 * Math.cos((pz.center_lat * Math.PI) / 180))) * Math.sin(rad);
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: [[pz.center_lon, pz.center_lat], [endLon, endLat]] },
+          properties: { kind: 'direction' }
+        });
+      }
+      const fc = { type: 'FeatureCollection', features };
+      const existingSrc = map.getSource('ai-prediction-zone') as maplibregl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData(fc as any);
+      } else {
+        map.addSource('ai-prediction-zone', { type: 'geojson', data: fc as any });
+        map.addLayer({
+          id: 'ai-prediction-fill',
+          type: 'fill',
+          source: 'ai-prediction-zone',
+          filter: ['==', '$type', 'Polygon'],
+          paint: { 'fill-color': '#9333EA', 'fill-opacity': 0.16 }
+        });
+        map.addLayer({
+          id: 'ai-prediction-outline',
+          type: 'line',
+          source: 'ai-prediction-zone',
+          paint: { 'line-color': '#9333EA', 'line-width': 2.5, 'line-dasharray': [3, 2] }
+        });
+      }
+
+      const predEl = document.createElement('div');
+      predEl.className = 'cursor-pointer';
+      predEl.innerHTML = `<div class="px-2 py-0.5 rounded-full bg-purple-700/95 border-2 border-dashed border-white text-white shadow-lg text-[9px] font-mono font-bold whitespace-nowrap">AI NEXT IMPACT • ${pred.risk || 'RISK'}</div>`;
+      const predPopup = new maplibregl.Popup({ offset: 12, closeButton: false }).setHTML(`
+        <div class="font-sans text-xs bg-white text-[#18212B] p-2.5 max-w-[240px]">
+          <div class="text-[9px] font-mono uppercase text-purple-700 font-bold">AI PROJECTION (UNVERIFIED)</div>
+          <div class="font-bold mt-0.5">${pred.location || 'Predicted Zone'}</div>
+          <div class="text-[10px] text-[#5B6777] mt-0.5"><b>Hazard:</b> ${pred.hazard} • <b>ETA:</b> ${pred.eta}</div>
+          <div class="text-[10px] text-[#5B6777]"><b>Confidence:</b> ${pred.confidence}</div>
+          <div class="text-[10px] text-[#18212B] mt-1">${pred.why || ''}</div>
+        </div>
+      `);
+      const predMarker = new maplibregl.Marker({ element: predEl })
+        .setLngLat([pz.center_lon, pz.center_lat])
+        .setPopup(predPopup)
+        .addTo(map);
+      markersRef.current.push(predMarker);
+    } else {
+      const existingSrc = map.getSource('ai-prediction-zone') as maplibregl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData({ type: 'FeatureCollection', features: [] });
+      }
+    }
+
+  }, [state, selectedIncidentId, visibleLayers, baseLayer, fieldAlerts, osmInfrastructure, openData, geoMode, nextImpactPrediction]);
 
   const handleRecenter = () => {
     mapRef.current?.flyTo({

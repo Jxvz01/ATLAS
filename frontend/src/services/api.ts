@@ -301,6 +301,11 @@ export const api = {
     return res.data;
   },
 
+  aiPredictNextImpact: async () => {
+    const res = await axios.post(`${API_BASE}/ai/predict-next-impact`, {}, { timeout: 25000 });
+    return res.data;
+  },
+
   // ATLAS 2.0: Open-Source Geographic, Satellite Imagery & Hazard Data
   getOpenDataOverview: async (includeOsm: boolean = false) => {
     const res = await axios.get(`${API_BASE}/open-data/overview`, { params: { include_osm: includeOsm }, timeout: 12000 });

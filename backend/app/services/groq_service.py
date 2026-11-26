@@ -243,6 +243,105 @@ def generate_operational_briefing(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def predict_next_impact(context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Predicts where the next hazard/impact is likely to occur strictly grounded
+    in live incident locations/timestamps/severities, Open-Meteo weather/rainfall,
+    hazards, and road blockages. Never invents coordinates or observations.
+    """
+    active_incidents = context.get("active_incidents") or []
+    if not active_incidents:
+        return {
+            "available": True,
+            "status": "ok",
+            "ai_generated": False,
+            "advisory_only": True,
+            "model": settings.GROQ_MODEL,
+            "timestamp": _utc_now(),
+            "provenance": "ATLAS Operational DB (Insufficient active incident data)",
+            "prediction": {
+                "sufficient_data": False,
+                "message": "Insufficient data for reliable impact prediction.",
+                "location": "Unknown",
+                "hazard": "Unknown",
+                "eta": "Unknown",
+                "risk": "Low",
+                "confidence": "Insufficient Data",
+                "why": "No active operational incidents are currently present to project next-impact risk.",
+                "supporting_evidence": [],
+                "recommended_actions": [],
+                "uncertainties": ["No active incidents in operational database."],
+                "predicted_zone": None,
+            },
+        }
+
+    prompt = (
+        "Analyze the live ATLAS operational incidents, timestamps, weather/rainfall data, hazards, and road blockages "
+        "to predict WHERE THE NEXT IMPACT IS MOST LIKELY TO OCCUR.\n"
+        "HONESTY & GROUNDING RULES:\n"
+        "- Use ONLY the coordinates, localities, weather/rainfall, and hazard data present in the CONTEXT JSON.\n"
+        "- NEVER invent weather measurements, satellite observations, or fabricated coordinates.\n"
+        "- If evidence is too sparse or contradictory to make a credible spatial prediction, set \"sufficient_data\": false "
+        "and \"message\": \"Insufficient data for reliable impact prediction.\".\n"
+        "- If \"sufficient_data\" is true, derive \"predicted_zone\" center_lat and center_lon directly from the active "
+        "incident cluster or downstream/adjacent hazard coordinates in the context.\n\n"
+        "Return a JSON object with exact keys:\n"
+        '- "sufficient_data" (boolean)\n'
+        '- "message" (string, e.g. "Insufficient data for reliable impact prediction." if false, else brief headline)\n'
+        '- "location" (string: specific locality, district, or geographic zone)\n'
+        '- "hazard" (string: predicted hazard type)\n'
+        '- "eta" (string: estimated time window or "Unknown")\n'
+        '- "risk" (string: one of "Low", "Moderate", "High", "Critical")\n'
+        '- "confidence" (string: e.g. "Low (35%)", "Moderate (65%)", "High (80%)")\n'
+        '- "why" (string: concise explanation grounded in specific incident IDs and weather/hazard data)\n'
+        '- "supporting_evidence" (list of strings: incident IDs and weather/hazard facts used)\n'
+        '- "recommended_actions" (list of up to 3 concise action strings)\n'
+        '- "uncertainties" (list of strings)\n'
+        '- "predicted_zone" (null OR object {"center_lat": float, "center_lon": float, "radius_km": float, "direction_bearing_deg": float or null})\n\n'
+        f"CONTEXT JSON:\n{json.dumps(context, default=str)}"
+    )
+    res = _call_groq(
+        [
+            {"role": "system", "content": SYSTEM_GUARDRAIL},
+            {"role": "user", "content": prompt},
+        ],
+        model=settings.GROQ_MODEL,
+        json_mode=True,
+        max_tokens=1536,
+    )
+    if not res["available"]:
+        return {**res, "provenance": "ATLAS Live Operational Snapshot (AI Unavailable)"}
+
+    try:
+        parsed = json.loads(res["content"])
+    except Exception:
+        parsed = {
+            "sufficient_data": False,
+            "message": "Insufficient data for reliable impact prediction.",
+            "location": "Unknown",
+            "hazard": "Unknown",
+            "eta": "Unknown",
+            "risk": "Moderate",
+            "confidence": "Low",
+            "why": res["content"],
+            "supporting_evidence": [],
+            "recommended_actions": [],
+            "uncertainties": ["Structured JSON parse fallback."],
+            "predicted_zone": None,
+        }
+
+    return {
+        "available": True,
+        "status": "ok",
+        "ai_generated": True,
+        "advisory_only": True,
+        "model": res["model"],
+        "timestamp": res["timestamp"],
+        "provenance": "Grounded in live active incidents, timestamps, Open-Meteo weather & hazard zones",
+        "prediction": parsed,
+    }
+
+
 def analyze_field_report(report_data: Dict[str, Any]) -> Dict[str, Any]:
     prompt = (
         "Extract structured operational intelligence from this rescuer field report. "

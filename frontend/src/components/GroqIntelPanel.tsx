@@ -12,6 +12,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { api } from '../services/api';
+import { useAtlasStore } from '../store/atlasStore';
 import { Incident } from '../types/atlas';
 
 interface GroqIntelPanelProps {
@@ -19,6 +20,7 @@ interface GroqIntelPanelProps {
 }
 
 export const GroqIntelPanel: React.FC<GroqIntelPanelProps> = ({ selectedIncident }) => {
+  const { nextImpactPrediction, setNextImpactPrediction } = useAtlasStore();
   const [aiStatus, setAiStatus] = useState<{ available: boolean; model?: string; fast_model?: string; provider?: string } | null>(null);
   const [briefing, setBriefing] = useState<any | null>(null);
   const [assessment, setAssessment] = useState<any | null>(null);
@@ -26,14 +28,32 @@ export const GroqIntelPanel: React.FC<GroqIntelPanelProps> = ({ selectedIncident
   const [queryText, setQueryText] = useState('');
   const [queryResult, setQueryResult] = useState<any | null>(null);
 
+  const [loadingPredict, setLoadingPredict] = useState(false);
   const [loadingBriefing, setLoadingBriefing] = useState(false);
   const [loadingAssess, setLoadingAssess] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [loadingQuery, setLoadingQuery] = useState(false);
 
+  const handlePredictImpact = async () => {
+    setLoadingPredict(true);
+    try {
+      const res = await api.aiPredictNextImpact();
+      setNextImpactPrediction(res);
+    } catch (e: any) {
+      setNextImpactPrediction({ available: false, reason: e.message || 'Network error' });
+    } finally {
+      setLoadingPredict(false);
+    }
+  };
+
   useEffect(() => {
     api.getAiStatus()
-      .then(setAiStatus)
+      .then((status) => {
+        setAiStatus(status);
+        if (status?.available && !nextImpactPrediction) {
+          handlePredictImpact();
+        }
+      })
       .catch(() => setAiStatus({ available: false }));
   }, []);
 
@@ -124,6 +144,90 @@ export const GroqIntelPanel: React.FC<GroqIntelPanelProps> = ({ selectedIncident
           <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
             KEY NOT SET
           </span>
+        )}
+      </div>
+
+      {/* 0. PREDICTED NEXT IMPACT (Forward-Looking AI Advisory) */}
+      <div className="p-2.5 rounded-lg border-2 border-purple-300 bg-purple-50/60 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-purple-900 font-mono">
+              PREDICTED NEXT IMPACT
+            </span>
+            <span className="text-[8px] font-mono px-1.5 py-0.2 rounded bg-purple-200 text-purple-900 font-bold uppercase">
+              AI Projection
+            </span>
+          </div>
+          <button
+            disabled={loadingPredict}
+            onClick={handlePredictImpact}
+            className="px-2 py-0.5 rounded bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white text-[9px] font-mono font-semibold flex items-center gap-1"
+          >
+            {loadingPredict ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Sparkles className="w-2.5 h-2.5" />}
+            <span>{loadingPredict ? 'Analyzing...' : 'Predict'}</span>
+          </button>
+        </div>
+
+        {!nextImpactPrediction && loadingPredict && (
+          <div className="text-[10px] text-purple-800 font-mono">Analyzing live incidents, rainfall & hazards...</div>
+        )}
+
+        {nextImpactPrediction && !nextImpactPrediction.available && renderUnavailable(nextImpactPrediction)}
+
+        {nextImpactPrediction?.available && nextImpactPrediction.prediction && (
+          nextImpactPrediction.prediction.sufficient_data === false ? (
+            <div className="p-2 rounded bg-white border border-purple-200 text-[11px] text-purple-950 font-semibold">
+              {nextImpactPrediction.prediction.message || 'Insufficient data for reliable impact prediction.'}
+              {nextImpactPrediction.prediction.why && (
+                <div className="text-[10px] font-normal text-[#5B6777] mt-1">{nextImpactPrediction.prediction.why}</div>
+              )}
+            </div>
+          ) : (
+            <div className="p-2 rounded bg-white border border-purple-200 text-[11px] space-y-1.5">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+                <div><span className="text-[#5B6777] font-semibold">Location:</span> <span className="font-bold text-[#0F172A]">{nextImpactPrediction.prediction.location}</span></div>
+                <div><span className="text-[#5B6777] font-semibold">Hazard:</span> <span className="font-bold text-[#0F172A]">{nextImpactPrediction.prediction.hazard}</span></div>
+                <div><span className="text-[#5B6777] font-semibold">ETA:</span> <span className="font-mono font-bold text-purple-800">{nextImpactPrediction.prediction.eta}</span></div>
+                <div>
+                  <span className="text-[#5B6777] font-semibold">Risk:</span>{' '}
+                  <span className={`font-bold px-1 py-0.2 rounded text-[9px] uppercase ${
+                    nextImpactPrediction.prediction.risk === 'Critical' ? 'bg-red-100 text-red-700' :
+                    nextImpactPrediction.prediction.risk === 'High' ? 'bg-orange-100 text-orange-700' :
+                    'bg-amber-100 text-amber-800'
+                  }`}>{nextImpactPrediction.prediction.risk}</span>
+                </div>
+                <div className="col-span-2"><span className="text-[#5B6777] font-semibold">Confidence:</span> <span className="font-mono text-[#0F172A]">{nextImpactPrediction.prediction.confidence}</span></div>
+              </div>
+
+              <div className="pt-1 border-t border-purple-100">
+                <div className="text-[9px] font-bold uppercase text-purple-900">WHY:</div>
+                <p className="text-[10px] text-[#111827] leading-snug mt-0.5">{nextImpactPrediction.prediction.why}</p>
+              </div>
+
+              {nextImpactPrediction.prediction.recommended_actions?.length > 0 && (
+                <div className="pt-1 border-t border-purple-100">
+                  <div className="text-[9px] font-bold uppercase text-purple-900">RECOMMENDED ACTIONS:</div>
+                  <ul className="list-disc pl-4 text-[10px] text-[#111827] space-y-0.5 mt-0.5">
+                    {nextImpactPrediction.prediction.recommended_actions.slice(0, 3).map((act: string, i: number) => (
+                      <li key={i}>{act}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {nextImpactPrediction.prediction.supporting_evidence?.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {nextImpactPrediction.prediction.supporting_evidence.slice(0, 5).map((ev: string, i: number) => (
+                    <span key={i} className="px-1 py-0.2 rounded bg-purple-50 border border-purple-200 font-mono text-[9px] text-purple-900">{ev}</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="text-[8px] font-mono text-[#5B6777] pt-0.5">
+                UNVERIFIED AI PROJECTION • {nextImpactPrediction.model} • Zone overlaid on map
+              </div>
+            </div>
+          )
         )}
       </div>
 
