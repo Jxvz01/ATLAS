@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AdminHeader } from '../components/AdminHeader';
-import { AdminSidebar } from '../components/AdminSidebar';
+import { IncidentQueuePanel } from '../components/IncidentQueuePanel';
 import { SatelliteMapView } from '../components/SatelliteMapView';
 import { LiveAlertsPanel } from '../components/LiveAlertsPanel';
 import { IncidentsPanel } from '../features/incidents/IncidentsPanel';
@@ -23,6 +23,7 @@ export const AdminPortal: React.FC = () => {
   const { state, fieldAlerts } = useAtlasStore();
   const [currentTab, setCurrentTab] = useState<string>('command-center');
   const [modalOpen, setModalOpen] = useState(false);
+  const [mobileZone, setMobileZone] = useState<'queue' | 'map' | 'inspector'>('map');
 
   // Derived operational metrics from authoritative backend state
   const incidents = state?.incidents || [];
@@ -62,11 +63,29 @@ export const AdminPortal: React.FC = () => {
 
   return (
     <div className="w-screen h-screen flex flex-col bg-[#F5F6F7] text-[#18212B] overflow-hidden select-none font-sans">
-      {/* 1. TOP HEADER: Location, Coordinates, Time, Weather, Threat Level, Profile */}
-      <AdminHeader />
+      {/* 1. TOP HEADER: Location, Coordinates, Time, Weather, Threat Level, Operations Menu */}
+      <AdminHeader onOpenView={handleTabChange} />
 
       {/* 1B. COMMAND OVERVIEW KPI STRIP (Live Backend Metrics) */}
-      <div className="bg-white border-b border-[#DCE2E8] px-4 py-1.5 flex items-center justify-between gap-3 overflow-x-auto text-[11px] shrink-0">
+      <div className="bg-white border-b border-[#DCE2E8] px-3 sm:px-4 py-1.5 flex items-center justify-between gap-3 overflow-x-auto text-[11px] shrink-0">
+        {/* Mobile/Tablet Zone Switcher */}
+        <div className="flex lg:hidden items-center gap-1 bg-[#F3F5F8] p-0.5 rounded border border-[#DCE2E8] shrink-0">
+          {([
+            { id: 'queue', label: 'Queue' },
+            { id: 'map', label: 'Map' },
+            { id: 'inspector', label: 'Detail' }
+          ] as const).map(z => (
+            <button
+              key={z.id}
+              onClick={() => setMobileZone(z.id)}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+                mobileZone === z.id ? 'bg-[#0F172A] text-white' : 'text-[#5B6777]'
+              }`}
+            >
+              {z.label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-4 tabular-nums">
           <div className="flex items-center gap-1.5">
             <span className="text-[#5B6777] font-medium">Active:</span>
@@ -110,18 +129,22 @@ export const AdminPortal: React.FC = () => {
         </div>
       </div>
 
-      {/* MAIN 3-ZONE LAYOUT */}
+      {/* MAIN THREE-ZONE COMMAND WORKSPACE */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* A. LEFT SIDEBAR NAVIGATION (230-250px) */}
-        <AdminSidebar currentTab={currentTab} onTabChange={handleTabChange} />
+        {/* A. LEFT ZONE: INCIDENT QUEUE (300px desktop) */}
+        <div className={`${mobileZone === 'queue' ? 'flex w-full' : 'hidden'} lg:flex lg:w-[300px] h-full shrink-0`}>
+          <IncidentQueuePanel onSelectIncident={() => setMobileZone('inspector')} />
+        </div>
 
-        {/* B. CENTRAL DOMINANT SATELLITE MAP (Largest Area) */}
-        <main className="flex-1 h-full relative overflow-hidden bg-[#F5F6F7]">
+        {/* B. CENTRAL ZONE: DOMINANT OPERATIONAL MAP */}
+        <main className={`${mobileZone === 'map' ? 'flex' : 'hidden'} lg:flex flex-1 h-full relative overflow-hidden bg-[#F3F5F8]`}>
           <SatelliteMapView />
         </main>
 
-        {/* C. RIGHT LIVE ALERTS PANEL (320-350px) */}
-        <LiveAlertsPanel onSelectEntity={handleSelectEntity} />
+        {/* C. RIGHT ZONE: CONTEXTUAL INSPECTOR, COORDINATION & AI */}
+        <div className={`${mobileZone === 'inspector' ? 'flex w-full' : 'hidden'} lg:flex lg:w-[340px] h-full shrink-0`}>
+          <LiveAlertsPanel onSelectEntity={handleSelectEntity} />
+        </div>
       </div>
 
       {/* CONTEXTUAL MODAL FOR SECONDARY ADMIN VIEWS */}

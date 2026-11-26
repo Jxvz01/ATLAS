@@ -1,18 +1,33 @@
 import React, { useState, useEffect } from 'react';
+import { NavLink } from 'react-router-dom';
 import { 
   MapPin, 
   Clock, 
   CloudSun, 
-  ShieldAlert, 
   Bell, 
   User, 
-  Activity,
-  ChevronDown
+  Menu,
+  Users,
+  Building2,
+  BarChart2,
+  Radio,
+  Play,
+  ShieldCheck,
+  RadioTower,
+  Smartphone,
+  LogOut
 } from 'lucide-react';
 import { useAtlasStore } from '../store/atlasStore';
+import { useAuthStore } from '../store/authStore';
 
-export const AdminHeader: React.FC = () => {
-  const { state, openData, fetchOpenData, isOffline, syncLatencyMs, lastSyncedAt } = useAtlasStore();
+interface AdminHeaderProps {
+  onOpenView?: (tab: string) => void;
+}
+
+export const AdminHeader: React.FC<AdminHeaderProps> = ({ onOpenView }) => {
+  const { state, openData, fetchOpenData, isOffline, syncLatencyMs } = useAtlasStore();
+  const { logout } = useAuthStore();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
 
@@ -126,16 +141,87 @@ export const AdminHeader: React.FC = () => {
           )}
         </button>
 
-        <span className="h-3.5 w-[1px] bg-[#E5E9ED]" />
+        <span className="h-3.5 w-[1px] bg-slate-700" />
+
+        {/* Secondary Views & Portals Menu */}
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen(v => !v)}
+            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1.5 transition"
+          >
+            <Menu className="w-3.5 h-3.5 text-[#E85D2A]" />
+            <span className="hidden sm:inline">Operations</span>
+          </button>
+
+          {menuOpen && (
+            <div
+              onMouseLeave={() => setMenuOpen(false)}
+              className="absolute right-0 top-9 w-56 bg-white text-[#111827] border border-[#DCE2E8] rounded-lg shadow-xl py-1.5 z-50 text-xs"
+            >
+              <div className="px-3 py-1 text-[10px] font-mono font-bold uppercase text-[#5B6777]">
+                Command Modules
+              </div>
+              {[
+                { id: 'resources', label: 'Response Units', icon: Users },
+                { id: 'hospitals', label: 'Hospital Capacity', icon: Building2 },
+                { id: 'analytics', label: 'Metrics & Analytics', icon: BarChart2 },
+                { id: 'communications', label: 'Broadcast Alerts', icon: Radio },
+                { id: 'simulation', label: 'Simulation Controls', icon: Play },
+                { id: 'access-control', label: 'Access Control', icon: ShieldCheck },
+              ].map(item => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (onOpenView) onOpenView(item.id);
+                    }}
+                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-[#F3F5F8] text-left font-medium"
+                  >
+                    <Icon className="w-3.5 h-3.5 text-[#5B6777]" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+
+              <div className="my-1 border-t border-[#DCE2E8]" />
+              <div className="px-3 py-1 text-[10px] font-mono font-bold uppercase text-[#5B6777]">
+                Portals
+              </div>
+              <NavLink to="/hospital" className="px-3 py-1.5 flex items-center gap-2 hover:bg-[#F3F5F8] text-[#111827]">
+                <Building2 className="w-3.5 h-3.5 text-[#0284C7]" />
+                <span>Hospital Portal</span>
+              </NavLink>
+              <NavLink to="/rescue" className="px-3 py-1.5 flex items-center gap-2 hover:bg-[#F3F5F8] text-[#111827]">
+                <RadioTower className="w-3.5 h-3.5 text-[#15803D]" />
+                <span>Rescuer Terminal</span>
+              </NavLink>
+              <NavLink to="/app" className="px-3 py-1.5 flex items-center gap-2 hover:bg-[#F3F5F8] text-[#111827]">
+                <Smartphone className="w-3.5 h-3.5 text-[#E85D2A]" />
+                <span>Civilian SOS App</span>
+              </NavLink>
+
+              <div className="my-1 border-t border-[#DCE2E8]" />
+              <button
+                onClick={logout}
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-[#DC2626] font-semibold text-left"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Admin Profile */}
-        <div className="flex items-center gap-2 pl-1 cursor-pointer">
-          <div className="w-7 h-7 rounded-full bg-[#F5F6F7] border border-[#E5E9ED] flex items-center justify-center text-[#18212B] font-semibold text-xs">
-            <User className="w-3.5 h-3.5 text-[#718096]" />
+        <div className="hidden xl:flex items-center gap-2 pl-1">
+          <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-200 font-semibold text-xs">
+            <User className="w-3.5 h-3.5 text-slate-300" />
           </div>
-          <div className="hidden lg:block text-left leading-tight">
-            <div className="font-semibold text-xs text-[#18212B]">Incident Commander</div>
-            <div className="text-[10px] text-[#718096] font-mono">SEOC • Operations</div>
+          <div className="text-left leading-tight">
+            <div className="font-semibold text-[11px] text-slate-100">Commander</div>
+            <div className="text-[9px] text-slate-400 font-mono">SEOC • Live</div>
           </div>
         </div>
       </div>

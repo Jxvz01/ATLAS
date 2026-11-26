@@ -44,9 +44,11 @@ export const RescuerPortal: React.FC = () => {
     fetchMissionMessages,
     submitFieldAlert,
     sendMissionMessage,
-    acknowledgeMessage
+    acknowledgeMessage,
+    isOffline,
+    syncLatencyMs
   } = useAtlasStore();
-  const { logout, userName } = useAuthStore();
+  const { logout, userName, entityId } = useAuthStore();
 
   const [activeNav, setActiveNav] = useState('My Assignment');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -88,8 +90,11 @@ export const RescuerPortal: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
-  // Target unit is R-04 as in the master design reference
-  const currentUnit = state?.resources.find(r => r.id === 'R-04') || state?.resources.find(r => r.status === 'Assigned') || state?.resources[0];
+  // Resolve logged-in unit first, fallback to assigned unit or R-04
+  const currentUnit = (entityId && state?.resources.find(r => r.id === entityId))
+    || state?.resources.find(r => r.status === 'Assigned')
+    || state?.resources.find(r => r.id === 'R-04')
+    || state?.resources[0];
   
   // Find active assignment for R-04 (or current unit)
   const activeAssignment = state?.assignments.find(
@@ -276,95 +281,60 @@ export const RescuerPortal: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col md:flex-row h-screen bg-[#F5F7F9] text-[#17212B] font-sans overflow-hidden select-none">
-      
-      {/* MOBILE TOP BAR */}
-      <div className="md:hidden bg-white border-b border-[#E3E8ED] px-4 py-3 flex items-center justify-between shrink-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-[#F26536] text-white flex items-center justify-center font-black text-xs shadow-xs">
+    <div className="flex flex-col min-h-screen bg-[#F3F5F8] text-[#111827] font-sans overflow-x-hidden select-none">
+
+      {/* COMPACT FIELD HEADER (Mobile-First & Desktop) */}
+      <header className="h-12 bg-[#0F172A] text-white border-b border-slate-800 px-3 sm:px-5 flex items-center justify-between shrink-0 z-30 sticky top-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded bg-[#E85D2A] text-white flex items-center justify-center font-black text-xs shrink-0">
             ▲
           </div>
-          <div>
-            <div className="font-extrabold text-sm tracking-tight text-[#17212B]">ATLAS FIELD</div>
-            <div className="text-[10px] text-[#64748B] font-mono">{currentUnit?.id || 'R-04'} • {currentUnit?.type || 'Boat Team'}</div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 rounded-lg border border-[#E3E8ED] text-[#17212B] hover:bg-[#F5F7F9]"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </div>
-
-      {/* 1. SIDEBAR (Collapsible on mobile) */}
-      <aside className={`
-        ${mobileMenuOpen ? 'flex' : 'hidden'} 
-        md:flex w-full md:w-[230px] bg-white border-r border-[#E3E8ED] flex-col justify-between shrink-0 z-20 shadow-sm
-        absolute md:static top-14 bottom-0 left-0
-      `}>
-        <div>
-          {/* Desktop Logo Header */}
-          <div className="p-4 border-b border-[#E3E8ED] hidden md:flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#F26536] flex items-center justify-center text-white font-black text-sm shadow-sm">
-              ▲
-            </div>
-            <div>
-              <div className="text-sm font-bold tracking-tight text-[#17212B]">ATLAS</div>
-              <div className="text-[11px] text-[#64748B]">Rescuer Portal</div>
-            </div>
-          </div>
-
-          {/* Navigation Links */}
-          <nav className="p-3 space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeNav === item.label;
-              return (
-                <button
-                  key={item.label}
-                  onClick={() => {
-                    setActiveNav(item.label);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-lg text-xs font-medium transition ${
-                    isActive
-                      ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
-                      : 'text-[#64748B] hover:bg-[#F5F7F9] hover:text-[#17212B]'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-[#F26536]' : 'text-[#64748B]'}`} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Rescuer Status Badge & Logout */}
-        <div className="p-3 border-t border-[#E3E8ED] space-y-2 bg-white">
-          <div className="p-2.5 bg-[#F8FAFC] rounded-lg border border-[#E3E8ED]">
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#23966B] animate-pulse"></span>
-              <span className="text-[11px] font-semibold text-[#17212B]">Online • On Duty</span>
+              <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white">ATLAS FIELD</span>
+              <span className="px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] font-bold text-slate-200">
+                {currentUnit?.id || 'R-04'}
+              </span>
             </div>
-            <div className="text-[10px] text-[#64748B] mt-0.5 font-mono">
-              {currentUnit?.id || 'R-04'} | {currentUnit?.type || 'Boat Team'}
+            <div className="text-[10px] text-slate-400 font-mono truncate hidden sm:block">
+              {currentUnit?.name || currentUnit?.type || 'Field Response Unit'}
             </div>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Connection Status */}
+          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] border ${
+            isOffline
+              ? 'bg-red-950/70 text-red-300 border-red-700'
+              : 'bg-slate-800 text-emerald-300 border-slate-700'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
+            <span className="hidden sm:inline">{isOffline ? 'Degraded' : `Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
+          </div>
+
+          {/* Current Mission Status Pill */}
+          <span className={`px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase border ${
+            activeAssignment
+              ? 'bg-[#E85D2A]/20 text-[#FF8A65] border-[#E85D2A]/40'
+              : 'bg-slate-800 text-slate-300 border-slate-700'
+          }`}>
+            {currentStatus}
+          </span>
+
           <button
             onClick={logout}
-            className="w-full flex items-center justify-center gap-1.5 py-2 md:py-1.5 text-xs text-[#64748B] hover:text-[#E23B3B] hover:bg-red-50 rounded transition font-medium"
+            title="Sign Out"
+            className="flex items-center gap-1 px-2 py-1 rounded bg-slate-800 hover:bg-red-950/60 hover:text-red-300 border border-slate-700 text-[11px] font-medium text-slate-300 transition"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Sign Out</span>
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
-      </aside>
+      </header>
 
-      {/* 2. MAIN FIELD TERMINAL WORKSPACE */}
-      <main className="flex-1 p-4 md:p-5 overflow-y-auto space-y-4">
+      {/* MAIN FIELD TERMINAL WORKSPACE */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-5 space-y-4">
         
         {/* Status Confirmation Banner */}
         {statusFeedback && (
@@ -424,6 +394,37 @@ export const RescuerPortal: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* INLINE PENDING COMMAND INSTRUCTIONS (1-TAP ACKNOWLEDGE) */}
+        {unackedInstructions.length > 0 && (
+          <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 space-y-2 shadow-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 font-mono">
+                Pending Command Instruction ({unackedInstructions.length})
+              </span>
+              <button
+                onClick={() => setActiveModal('comms')}
+                className="text-[11px] font-bold text-[#E85D2A] hover:underline"
+              >
+                Open Full Thread →
+              </button>
+            </div>
+            {unackedInstructions.slice(0, 2).map(instr => (
+              <div key={instr.id} className="bg-white border border-amber-200 rounded-lg p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="text-xs text-[#111827]">
+                  <span className="font-bold text-[#E85D2A] mr-1.5">{instr.sender_name}:</span>
+                  <span>{instr.content}</span>
+                </div>
+                <button
+                  onClick={() => acknowledgeMessage(instr.id)}
+                  className="px-3 py-1.5 rounded-lg bg-[#E85D2A] hover:bg-[#d24e1e] text-white text-xs font-bold shrink-0 transition"
+                >
+                  Acknowledge Instruction
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* TOP ROW: Current Assignment Card (Left) & MapLibre Route View (Right) */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">

@@ -212,22 +212,19 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
   const recommendedHospital = (state?.hospitals || []).find(h => h.operational_status === 'Operational' && h.available_beds > 5) || (state?.hospitals || [])[0];
 
   return (
-    <aside className="w-[340px] h-full bg-white border-l border-[#E5E9ED] flex flex-col select-none z-10 shadow-[-1px_0_4px_rgba(0,0,0,0.02)]">
-      {/* THREE COMPACT TABS: Alerts | Field | ATLAS AI */}
-      <div className="p-2 border-b border-[#E5E9ED] bg-[#F5F6F7]/80 flex items-center gap-1">
+    <aside className="w-full lg:w-[340px] h-full bg-white border-l border-[#DCE2E8] flex flex-col select-none z-10">
+      {/* FOUR COMPACT TABS: Detail | Field | AI | Data */}
+      <div className="p-2 border-b border-[#DCE2E8] bg-[#F8FAFC] flex items-center gap-1">
         <button
           onClick={() => setActiveTab('alerts')}
-          className={`flex-1 py-1.5 px-2 rounded-md text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
+          className={`flex-1 py-1.5 px-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1 transition ${
             activeTab === 'alerts'
-              ? 'bg-white text-[#18212B] shadow-sm border border-[#E5E9ED]'
-              : 'text-[#718096] hover:text-[#18212B]'
+              ? 'bg-white text-[#111827] shadow-xs border border-[#DCE2E8]'
+              : 'text-[#5B6777] hover:text-[#111827]'
           }`}
         >
-          <Radio className={`w-3.5 h-3.5 ${activeTab === 'alerts' ? 'text-[#F26A38]' : 'text-[#718096]'}`} />
-          <span>Alerts</span>
-          <span className="text-[10px] font-mono px-1 rounded-full bg-[#E5E9ED] text-[#718096]">
-            {filteredAlerts.length}
-          </span>
+          <Radio className={`w-3.5 h-3.5 ${activeTab === 'alerts' ? 'text-[#E85D2A]' : 'text-[#5B6777]'}`} />
+          <span>{selectedIncidentId ? 'Detail' : 'Alerts'}</span>
         </button>
 
         <button
@@ -280,9 +277,80 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
         </button>
       </div>
 
-      {/* --- TAB 1: ALERTS FEED --- */}
+      {/* --- TAB 1: CONTEXTUAL INCIDENT DETAIL & ALERTS FEED --- */}
       {activeTab === 'alerts' && (
         <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Contextual Selected Incident Inspector */}
+          {selectedIncident && (
+            <div className="p-3 border-b border-[#DCE2E8] bg-[#F8FAFC] space-y-2 shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-xs font-bold text-[#0F172A]">{selectedIncident.id}</span>
+                  <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold uppercase ${
+                    selectedIncident.priority_level === 'Critical'
+                      ? 'bg-red-100 text-[#DC2626]'
+                      : 'bg-amber-100 text-[#D97706]'
+                  }`}>
+                    {selectedIncident.priority_level}
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-white border border-[#DCE2E8] text-[#111827]">
+                  {selectedIncident.status}
+                </span>
+              </div>
+
+              <div className="text-xs font-bold text-[#111827]">{selectedIncident.type}</div>
+              <p className="text-[11px] text-[#5B6777] leading-snug line-clamp-2">{selectedIncident.description}</p>
+
+              <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono bg-white p-1.5 rounded border border-[#DCE2E8] tabular-nums">
+                <div><span className="text-[#5B6777]">Affected:</span> <b>{selectedIncident.affected_population}</b></div>
+                <div><span className="text-[#5B6777]">Sev:</span> <b>{selectedIncident.severity}/5</b></div>
+                <div className="truncate"><span className="text-[#5B6777]">Src:</span> <b>{selectedIncident.source || 'SOS'}</b></div>
+              </div>
+
+              {/* Quick Dispatch / Resolve Action */}
+              {selectedIncident.status === 'Active' ? (
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  {evaluationResult?.recommended_resource_id ? (
+                    <button
+                      onClick={handleApproveRecommendation}
+                      className="flex-1 py-1.5 px-2 rounded bg-[#E85D2A] hover:bg-[#d24e1e] text-white text-[11px] font-bold transition"
+                    >
+                      Dispatch {evaluationResult.recommended_resource_id}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setActiveTab('intelligence')}
+                      className="flex-1 py-1.5 px-2 rounded bg-[#0F172A] hover:bg-slate-800 text-white text-[11px] font-bold transition"
+                    >
+                      Open Dispatch / AI
+                    </button>
+                  )}
+                  <button
+                    onClick={() => updateIncident(selectedIncident.id, { status: 'Resolved' })}
+                    className="py-1.5 px-2.5 rounded bg-white hover:bg-emerald-50 border border-[#DCE2E8] text-[#15803D] text-[11px] font-semibold"
+                  >
+                    Resolve
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-[10px] pt-0.5">
+                  <span className="text-[#15803D] font-semibold">
+                    {selectedIncident.status === 'Resolved' ? '✓ Incident Resolved' : 'Response Active'}
+                  </span>
+                  {selectedIncident.status !== 'Resolved' && (
+                    <button
+                      onClick={() => updateIncident(selectedIncident.id, { status: 'Resolved' })}
+                      className="text-[#15803D] font-bold hover:underline"
+                    >
+                      Mark Resolved
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Sub-Filters */}
           <div className="px-3 py-2 border-b border-[#E5E9ED] bg-white flex items-center gap-1">
             {(['All', 'Incidents', 'Roads', 'Weather'] as const).map(tab => (
@@ -566,6 +634,25 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
                 );
               })
             )}
+
+            {/* Consolidated Command Activity Timeline */}
+            <div className="pt-3 mt-2 border-t border-[#DCE2E8] space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase text-[#5B6777]">
+                <span>Command Activity Timeline</span>
+                <span>{(state?.activity_logs || []).length} Events</span>
+              </div>
+              <div className="space-y-1.5">
+                {(state?.activity_logs || []).slice(0, 8).map(log => (
+                  <div key={log.id} className="p-2 rounded bg-[#F8FAFC] border border-[#DCE2E8] text-[10px] space-y-0.5">
+                    <div className="flex items-center justify-between font-mono text-[9px] text-[#5B6777]">
+                      <span className="font-bold text-[#0F172A]">{log.event_type}</span>
+                      <span>{new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="text-[#111827] leading-snug">{log.message}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
