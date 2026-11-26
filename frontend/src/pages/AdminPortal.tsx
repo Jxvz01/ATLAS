@@ -16,7 +16,12 @@ import {
   MapPin, 
   X,
   ShieldCheck,
-  BarChart2
+  BarChart2,
+  AlertTriangle,
+  Activity,
+  Bed,
+  Siren,
+  Clock
 } from 'lucide-react';
 
 export const AdminPortal: React.FC = () => {
@@ -63,22 +68,22 @@ export const AdminPortal: React.FC = () => {
 
   return (
     <div className="w-screen h-screen flex flex-col bg-[#F5F6F7] text-[#18212B] overflow-hidden select-none font-sans">
-      {/* 1. TOP HEADER: Location, Coordinates, Time, Weather, Threat Level, Operations Menu */}
-      <AdminHeader onOpenView={handleTabChange} />
+      {/* 1. TOP HEADER: Branding, Primary Nav Tabs, Sync, Weather, Time */}
+      <AdminHeader activeNav={currentTab} onOpenView={handleTabChange} />
 
-      {/* 1B. COMMAND OVERVIEW KPI STRIP (Live Backend Metrics) */}
-      <div className="bg-white border-b border-[#DCE2E8] px-3 sm:px-4 py-1.5 flex items-center justify-between gap-3 overflow-x-auto text-[11px] shrink-0">
+      {/* 1B. 6-CARD KPI STRIP (Live Backend Metrics in Existing Light Palette) */}
+      <div className="bg-[#F3F5F8] border-b border-[#DCE2E8] px-3 py-2 shrink-0 space-y-2">
         {/* Mobile/Tablet Zone Switcher */}
-        <div className="flex lg:hidden items-center gap-1 bg-[#F3F5F8] p-0.5 rounded border border-[#DCE2E8] shrink-0">
+        <div className="flex lg:hidden items-center gap-1 bg-white p-0.5 rounded border border-[#DCE2E8] w-fit">
           {([
-            { id: 'queue', label: 'Queue' },
+            { id: 'queue', label: 'Incidents' },
             { id: 'map', label: 'Map' },
-            { id: 'inspector', label: 'Detail' }
+            { id: 'inspector', label: 'Inspector & AI' }
           ] as const).map(z => (
             <button
               key={z.id}
               onClick={() => setMobileZone(z.id)}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition ${
+              className={`px-2.5 py-1 rounded text-[11px] font-bold transition ${
                 mobileZone === z.id ? 'bg-[#0F172A] text-white' : 'text-[#5B6777]'
               }`}
             >
@@ -86,63 +91,113 @@ export const AdminPortal: React.FC = () => {
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-4 tabular-nums">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Active:</span>
-            <span className="font-bold text-[#111827]">{activeIncidentsCount}</span>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 tabular-nums">
+          <div className="bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-sky-50 text-[#0284C7] flex items-center justify-center shrink-0">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-[#5B6777] font-medium truncate">Active Incidents</div>
+              <div className="text-base font-bold text-[#111827] leading-tight">{activeIncidentsCount}</div>
+            </div>
           </div>
-          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Critical:</span>
-            <span className={`font-bold ${criticalCount > 0 ? 'text-[#DC2626]' : 'text-[#111827]'}`}>{criticalCount}</span>
+
+          <div className="bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-red-50 text-[#DC2626] flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-[#5B6777] font-medium truncate">Critical</div>
+              <div className={`text-base font-bold leading-tight ${criticalCount > 0 ? 'text-[#DC2626]' : 'text-[#111827]'}`}>{criticalCount}</div>
+            </div>
           </div>
-          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Unassigned:</span>
-            <span className={`font-bold ${unassignedCount > 0 ? 'text-[#D97706]' : 'text-[#15803D]'}`}>{unassignedCount}</span>
+
+          <div className="bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-amber-50 text-[#D97706] flex items-center justify-center shrink-0">
+              <MapPin className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-[#5B6777] font-medium truncate">Unassigned</div>
+              <div className={`text-base font-bold leading-tight ${unassignedCount > 0 ? 'text-[#D97706]' : 'text-[#15803D]'}`}>{unassignedCount}</div>
+            </div>
           </div>
-          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Units:</span>
-            <span className="font-bold text-[#15803D]">{availableUnitsCount} Avail</span>
-            <span className="text-[#5B6777]">/</span>
-            <span className="font-bold text-[#0284C7]">{dispatchedUnitsCount} Disp</span>
+
+          <div className="bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-emerald-50 text-[#15803D] flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-[#5B6777] font-medium truncate">Responders</div>
+              <div className="text-xs font-bold text-[#111827] leading-tight">
+                <span className="text-base text-[#15803D]">{availableUnitsCount}</span> Avail / {dispatchedUnitsCount} Disp
+              </div>
+            </div>
           </div>
-          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Hosp Beds:</span>
-            <span className="font-bold text-[#111827]">{totalAvailBeds} Avail</span>
+
+          <div className="bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-sky-50 text-[#0284C7] flex items-center justify-center shrink-0">
+              <Bed className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-[#5B6777] font-medium truncate">Hospital Beds</div>
+              <div className="text-xs font-bold text-[#111827] leading-tight">
+                <span className="text-base">{totalAvailBeds}</span> Avail ({hospitals.length} Hosp)
+              </div>
+            </div>
           </div>
-          <span className="h-3 w-[1px] bg-[#DCE2E8]" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Field Alerts:</span>
-            <span className={`font-bold ${pendingFieldAlertsCount > 0 ? 'text-[#DC2626]' : 'text-[#111827]'}`}>{pendingFieldAlertsCount} Pending</span>
+
+          <div className="bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-md bg-orange-50 text-[#E85D2A] flex items-center justify-center shrink-0">
+              <Siren className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] text-[#5B6777] font-medium truncate">Field Alerts</div>
+              <div className={`text-base font-bold leading-tight ${pendingFieldAlertsCount > 0 ? 'text-[#DC2626]' : 'text-[#111827]'}`}>
+                {fieldAlerts.length} <span className="text-[10px] font-medium text-[#5B6777]">({pendingFieldAlertsCount} Pending)</span>
+              </div>
+            </div>
           </div>
-          <span className="h-3 w-[1px] bg-[#DCE2E8] hidden lg:block" />
-          <div className="hidden lg:flex items-center gap-1.5">
-            <span className="text-[#5B6777] font-medium">Referrals:</span>
-            <span className="font-bold text-[#0284C7]">{pendingReferralsCount} En Route</span>
-          </div>
-        </div>
-        <div className="hidden xl:block text-[10px] font-mono text-[#5B6777] uppercase tracking-wider shrink-0">
-          OBSERVE → ASSESS → COORDINATE → ACT → REASSESS
         </div>
       </div>
 
       {/* MAIN THREE-ZONE COMMAND WORKSPACE */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* A. LEFT ZONE: INCIDENT QUEUE (300px desktop) */}
-        <div className={`${mobileZone === 'queue' ? 'flex w-full' : 'hidden'} lg:flex lg:w-[300px] h-full shrink-0`}>
-          <IncidentQueuePanel onSelectIncident={() => setMobileZone('inspector')} />
+      <div className="flex-1 flex overflow-hidden relative p-2 gap-2 bg-[#F3F5F8]">
+        {/* LEFT + CENTER WRAPPER (includes Recent Activity strip at bottom) */}
+        <div className={`${mobileZone === 'inspector' ? 'hidden' : 'flex'} lg:flex flex-1 flex-col gap-2 min-w-0 h-full overflow-hidden`}>
+          <div className="flex-1 flex gap-2 min-h-0 overflow-hidden">
+            {/* A. LEFT ZONE: INCIDENT QUEUE */}
+            <div className={`${mobileZone === 'queue' ? 'flex w-full' : 'hidden'} lg:flex lg:w-[295px] h-full shrink-0 rounded-lg overflow-hidden border border-[#DCE2E8]`}>
+              <IncidentQueuePanel onSelectIncident={() => setMobileZone('inspector')} />
+            </div>
+
+            {/* B. CENTRAL ZONE: DOMINANT OPERATIONAL MAP */}
+            <main className={`${mobileZone === 'map' ? 'flex' : 'hidden'} lg:flex flex-1 h-full relative overflow-hidden bg-white rounded-lg border border-[#DCE2E8]`}>
+              <SatelliteMapView />
+            </main>
+          </div>
+
+          {/* BOTTOM STRIP: RECENT ACTIVITY */}
+          <div className="hidden lg:flex bg-white border border-[#DCE2E8] rounded-lg px-3 py-2 items-center gap-4 shrink-0">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#0F172A] shrink-0">
+              <Clock className="w-3.5 h-3.5 text-[#5B6777]" />
+              <span>Recent Activity</span>
+            </div>
+            <div className="flex-1 grid grid-cols-3 gap-3 text-[11px] overflow-hidden">
+              {(state?.activity_logs || []).slice(0, 3).map(log => (
+                <div key={log.id} className="flex items-center gap-1.5 truncate text-[#5B6777]">
+                  <span className="font-mono text-[10px] text-[#0F172A] font-semibold shrink-0">
+                    {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className="truncate">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* B. CENTRAL ZONE: DOMINANT OPERATIONAL MAP */}
-        <main className={`${mobileZone === 'map' ? 'flex' : 'hidden'} lg:flex flex-1 h-full relative overflow-hidden bg-[#F3F5F8]`}>
-          <SatelliteMapView />
-        </main>
-
-        {/* C. RIGHT ZONE: CONTEXTUAL INSPECTOR, COORDINATION & AI */}
-        <div className={`${mobileZone === 'inspector' ? 'flex w-full' : 'hidden'} lg:flex lg:w-[340px] h-full shrink-0`}>
+        {/* C. RIGHT ZONE: CONTEXTUAL INSPECTOR + AI BRIEFING CARD */}
+        <div className={`${mobileZone === 'inspector' ? 'flex w-full' : 'hidden'} lg:flex lg:w-[360px] h-full shrink-0`}>
           <LiveAlertsPanel onSelectEntity={handleSelectEntity} />
         </div>
       </div>

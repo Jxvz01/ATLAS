@@ -21,10 +21,11 @@ import { useAtlasStore } from '../store/atlasStore';
 import { useAuthStore } from '../store/authStore';
 
 interface AdminHeaderProps {
+  activeNav?: string;
   onOpenView?: (tab: string) => void;
 }
 
-export const AdminHeader: React.FC<AdminHeaderProps> = ({ onOpenView }) => {
+export const AdminHeader: React.FC<AdminHeaderProps> = ({ activeNav = 'command-center', onOpenView }) => {
   const { state, openData, fetchOpenData, isOffline, syncLatencyMs } = useAtlasStore();
   const { logout } = useAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -74,41 +75,57 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ onOpenView }) => {
   return (
     <header className="h-12 bg-[#0F172A] text-slate-100 border-b border-slate-800 px-4 flex items-center justify-between z-20 select-none">
       {/* Left: Operational Context & Coordinates */}
-      <div className="flex items-center gap-3.5 text-xs">
-        <div className="flex items-center gap-1.5 font-medium text-white">
-          <MapPin className="w-3.5 h-3.5 text-[#E85D2A]" />
-          <span className="font-bold tracking-tight">ATLAS COMMAND</span>
-          <span className="text-slate-400 text-[11px] font-mono hidden sm:inline">Mysuru (12.2958°N, 76.6394°E)</span>
-        </div>
-
-        <span className="h-3.5 w-[1px] bg-slate-700" />
-
-        {/* Date & Time */}
-        <div className="flex items-center gap-2 text-slate-400 font-mono text-[11px] tabular-nums">
-          <Clock className="w-3 h-3 text-slate-400" />
-          <span className="hidden lg:inline">{currentDate}</span>
-          <span className="hidden lg:inline">•</span>
-          <span className="font-semibold text-slate-100">{currentTime || '--:--:-- IST'}</span>
-        </div>
-
-        <span className="h-3.5 w-[1px] bg-slate-700 hidden md:block" />
-
-        {/* Live Open-Meteo Weather */}
-        <div className="hidden md:flex items-center gap-1.5 text-slate-300 text-[11px]" title={weather?.attribution || 'Open-Meteo'}>
-          <CloudSun className="w-3.5 h-3.5 text-sky-400" />
-          {weather?.available ? (
-            <span className="tabular-nums">
-              {weather.temperature_c}°C {weather.condition} • Wind {weather.wind_speed_kmh} km/h
-              <span className="ml-1.5 text-[9px] font-mono text-slate-400">[Open-Meteo]</span>
-            </span>
-          ) : (
-            <span className="text-slate-400 font-mono text-[10px]">Weather: Unavailable</span>
-          )}
+      <div className="flex items-center gap-3 text-xs shrink-0">
+        <div className="flex items-center gap-2 font-medium text-white">
+          <div className="w-6 h-6 rounded bg-[#E85D2A] text-white flex items-center justify-center font-black text-xs">
+            ▲
+          </div>
+          <div>
+            <div className="font-bold tracking-tight leading-none">ATLAS <span className="font-normal text-slate-400">| Command Center</span></div>
+            <div className="text-[9px] text-slate-400 hidden sm:block">Disaster Response & Coordination</div>
+          </div>
         </div>
       </div>
 
-      {/* Right: Connectivity Freshness, Threat Level, Alerts */}
-      <div className="flex items-center gap-3 text-xs">
+      {/* Center: Primary Command Navigation Tabs */}
+      <nav className="hidden xl:flex items-center gap-1 text-[11px] font-semibold">
+        {[
+          { id: 'command-center', label: 'Operations', icon: MapPin },
+          { id: 'hazard-intel', label: 'Intelligence (AI)', icon: ShieldCheck },
+          { id: 'resources', label: 'Resources', icon: Users },
+          { id: 'hospitals', label: 'Hospitals', icon: Building2 },
+          { id: 'communications', label: 'Broadcasts', icon: Radio },
+          { id: 'analytics', label: 'Reports', icon: BarChart2 },
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeNav === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onOpenView && onOpenView(tab.id)}
+              className={`px-2.5 py-1.5 rounded flex items-center gap-1.5 transition ${
+                isActive
+                  ? 'bg-[#E85D2A]/20 text-[#FF8A65] border border-[#E85D2A]/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Right: Connectivity Freshness, Weather, Time & Operations Menu */}
+      <div className="flex items-center gap-2.5 text-xs shrink-0">
+        {/* Live Open-Meteo Weather */}
+        <div className="hidden md:flex items-center gap-1 text-slate-300 text-[10px]" title={weather?.attribution || 'Open-Meteo'}>
+          <CloudSun className="w-3.5 h-3.5 text-sky-400" />
+          {weather?.available ? (
+            <span className="tabular-nums">{weather.temperature_c}°C</span>
+          ) : null}
+        </div>
+
         {/* Data Freshness & Connectivity */}
         <div className={`hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-[10px] border ${
           isOffline
@@ -116,17 +133,21 @@ export const AdminHeader: React.FC<AdminHeaderProps> = ({ onOpenView }) => {
             : 'bg-slate-800/80 text-emerald-300 border-slate-700'
         }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${isOffline ? 'bg-red-400' : 'bg-emerald-400 animate-pulse'}`} />
-          <span>{isOffline ? 'Degraded • Retrying' : `Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
+          <span>{isOffline ? 'Degraded' : `Live Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
+        </div>
+
+        {/* Date & Time */}
+        <div className="hidden lg:flex items-center gap-1.5 text-slate-300 font-mono text-[10px] tabular-nums">
+          <span>{currentTime || '--:-- IST'}</span>
+          <span className="text-slate-500">•</span>
+          <span className="text-slate-400">{currentDate}</span>
         </div>
 
         {/* Threat Level Badge */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] uppercase font-mono font-bold text-slate-400 hidden sm:inline">Threat:</span>
-          <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] border flex items-center gap-1 ${threatColorClass}`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-            {threatLevel}
-          </span>
-        </div>
+        <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] border flex items-center gap-1 ${threatColorClass}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+          {threatLevel}
+        </span>
 
         <span className="h-3.5 w-[1px] bg-slate-700" />
 

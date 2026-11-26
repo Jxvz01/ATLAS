@@ -212,7 +212,9 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
   const recommendedHospital = (state?.hospitals || []).find(h => h.operational_status === 'Operational' && h.available_beds > 5) || (state?.hospitals || [])[0];
 
   return (
-    <aside className="w-full lg:w-[340px] h-full bg-white border-l border-[#DCE2E8] flex flex-col select-none z-10">
+    <aside className="w-full lg:w-[360px] h-full flex flex-col gap-2 select-none z-10">
+      {/* TOP CARD: CONTEXTUAL INSPECTOR & COORDINATION */}
+      <div className="flex-1 min-h-0 bg-white border border-[#DCE2E8] rounded-lg flex flex-col overflow-hidden">
       {/* FOUR COMPACT TABS: Detail | Field | AI | Data */}
       <div className="p-2 border-b border-[#DCE2E8] bg-[#F8FAFC] flex items-center gap-1">
         <button
@@ -991,14 +993,53 @@ export const LiveAlertsPanel: React.FC<LiveAlertsPanelProps> = ({ onSelectEntity
           </div>
         </div>
       )}
+      </div>
 
-      {/* Subtle Bottom Status Note */}
-      <div className="p-2 border-t border-[#E5E9ED] bg-[#F5F6F7] text-[10px] text-[#718096] font-mono flex items-center justify-between">
-        <span className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#27966B]" />
-          <span>Engine Sync: Live</span>
-        </span>
-        <span>SEOC Decision Support</span>
+      {/* BOTTOM CARD: AI OPERATIONAL BRIEFING (GROQ) */}
+      <div className="bg-white border border-[#DCE2E8] rounded-lg p-3 space-y-2 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-[#0F172A]">
+            <Sparkles className="w-3.5 h-3.5 text-[#0284C7]" />
+            <span>AI Operational Briefing</span>
+          </div>
+          <span className="px-1.5 py-0.5 rounded bg-sky-50 border border-sky-200 text-[#0284C7] text-[9px] font-mono font-bold">
+            Groq
+          </span>
+        </div>
+
+        <p className="text-[11px] text-[#5B6777] leading-snug">
+          {activeIncidents.length} active incidents ({activeIncidents.filter(i => i.priority_level === 'Critical').length} critical),{' '}
+          {activeIncidents.filter(i => i.status === 'Active').length} unassigned.{' '}
+          {(state?.resources || []).filter(r => r.status === 'Available').length} units available •{' '}
+          {(state?.hospitals || []).reduce((acc, h) => acc + (h.available_beds || 0), 0)} hospital beds open.
+        </p>
+
+        <div className="grid grid-cols-4 gap-1">
+          <button
+            onClick={() => setActiveTab('intelligence')}
+            className="py-1.5 px-1 rounded bg-[#F8FAFC] hover:bg-[#F3F5F8] border border-[#DCE2E8] text-[10px] font-semibold text-[#111827] transition"
+          >
+            Briefing
+          </button>
+          <button
+            onClick={() => setActiveTab('intelligence')}
+            className="py-1.5 px-1 rounded bg-[#F8FAFC] hover:bg-[#F3F5F8] border border-[#DCE2E8] text-[10px] font-semibold text-[#111827] transition"
+          >
+            Assess
+          </button>
+          <button
+            onClick={() => setActiveTab('intelligence')}
+            className="py-1.5 px-1 rounded bg-[#F8FAFC] hover:bg-[#F3F5F8] border border-[#DCE2E8] text-[10px] font-semibold text-[#111827] transition"
+          >
+            Summarize
+          </button>
+          <button
+            onClick={() => setActiveTab('intelligence')}
+            className="py-1.5 px-1 rounded bg-[#E85D2A] hover:bg-[#d24e1e] text-white text-[10px] font-bold transition"
+          >
+            Ask AI
+          </button>
+        </div>
       </div>
     </aside>
   );
