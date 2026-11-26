@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import json
+import uuid
 
 from app.database import (
     db, Incident, Resource, Hospital, Assignment, RoadBlockage, Alert, IncomingPatient
@@ -137,8 +139,8 @@ def list_incidents():
 
 @app.post("/api/incidents")
 def create_incident(req: CreateIncidentRequest):
-    new_num = len(db.incidents) + 101
-    inc_id = f"INC-{new_num}"
+    import uuid
+    inc_id = f"INC-{uuid.uuid4().hex[:5].upper()}"
     
     score, level = calculate_priority_score(req.dict())
 
@@ -162,14 +164,13 @@ def create_incident(req: CreateIncidentRequest):
     db.incidents[inc_id] = inc
     db.log_event("NEW_INCIDENT", f"New {level} priority incident {inc_id} reported ({req.type}) at ({req.latitude:.4f}, {req.longitude:.4f}).", inc_id)
     
-    # Mirror into SQLite persistent operational store
+    # Persist into Supabase PostgreSQL
     try:
-        from app.db.sqlite_store import db_store
+        from app.db.postgres_store import db_store
         from app.domain.models import IncidentRecord
         from app.domain.enums import IncidentType, IncidentCategory, IncidentStatus, VerificationStatus, PriorityLevel, ReportSource
         
-        # Match or fallback to controlled enums
-        type_enum = IncidentType.FLOODING
+        type_enum = IncidentType.OTHER
         for it in IncidentType:
             if it.value.lower() == req.type.lower() or it.name.lower() == req.type.lower():
                 type_enum = it
@@ -203,7 +204,7 @@ def create_incident(req: CreateIncidentRequest):
         )
         db_store.insert_incident(inc_record)
     except Exception as e:
-        print(f"Warning: SQLite persistence failed for {inc_id}: {e}")
+        print(f"Warning: PostgreSQL persistence failed for {inc_id}: {e}")
 
     return inc
 
@@ -234,6 +235,22 @@ def update_incident(incident_id: str, req: UpdateIncidentStatusRequest):
     inc.priority_level = req.priority_level or level
     inc.updated_at = datetime.utcnow().isoformat()
     db.log_event("INCIDENT_UPDATE", f"Incident {incident_id} updated: Status={inc.status}, Priority={inc.priority_level}", incident_id)
+
+    try:
+        from app.db.session import get_db_session
+        from app.db.models_sql import IncidentModel
+        with get_db_session() as session:
+            row = session.query(IncidentModel).filter(IncidentModel.id == incident_id).first()
+            if row:
+                row.status = inc.status
+                row.severity = inc.severity
+                row.urgency = inc.urgency
+                row.priority_score = inc.priority_score
+                row.priority_level = inc.priority_level
+                row.updated_at = inc.updated_at
+    except Exception as e:
+        print(f"Warning: Incident update PG persist failed: {e}")
+
     return inc
 
 # --- Resources Endpoints ---
@@ -285,6 +302,22 @@ def update_hospital(hospital_id: str, req: UpdateHospitalCapacityRequest):
         hosp.operational_status = req.operational_status
     hosp.updated_at = datetime.utcnow().isoformat()
     db.log_event("HOSPITAL_CAPACITY_CHANGE", f"Hospital {hosp.name} updated: Status={hosp.operational_status}, Beds Available={hosp.available_beds}/{hosp.total_beds}", hospital_id)
+
+    try:
+        from app.db.session import get_db_session
+        from app.db.models_sql import HospitalModel
+        with get_db_session() as session:
+            db_hosp = session.query(HospitalModel).filter(HospitalModel.id == hospital_id).first()
+            if db_hosp:
+                db_hosp.available_beds = hosp.available_beds
+                db_hosp.icu_capacity = hosp.icu_capacity
+                db_hosp.emergency_capacity = hosp.emergency_capacity
+                db_hosp.available_medical_personnel = hosp.available_medical_personnel
+                db_hosp.operational_status = hosp.operational_status
+                db_hosp.updated_at = hosp.updated_at
+    except Exception as e:
+        print(f"Warning: Hospital capacity PG persist failed: {e}")
+
     return hosp
 
 # --- Intelligence & Allocations Endpoints ---
@@ -326,7 +359,8 @@ def assign_resource(req: CreateAssignmentRequest):
     blk_list = [b.dict() for b in db.road_blockages.values()]
     coords, dist, is_detour = generate_safe_route(res.latitude, res.longitude, inc.latitude, inc.longitude, blk_list)
 
-    assign_id = f"ASG-{len(db.assignments) + 1:03d}"
+    import uuid
+    assign_id = f"ASG-{uuid.uuid4().hex[:5].upper()}"
     explanation = req.explanation or f"Assigned {res.name} to {inc.id} ({inc.type}) via shortest verified route ({dist} km)."
 
     assignment = Assignment(
@@ -345,10 +379,11 @@ def assign_resource(req: CreateAssignmentRequest):
     res.current_assignment_id = assign_id
     inc.status = "Assigned"
 
-    # If medical/trauma, create simulated incoming patient to nearest hospital
+    # If medical/trauma, create incoming patient referral to nearest hospital
+    created_referral = None
     if any(k in inc.type.lower() for k in ["medical", "trapped", "flooding"]) and inc.affected_population > 0:
         hosp = list(db.hospitals.values())[0] # Pick primary hospital
-        pat_id = f"PAT-{len(db.incoming_patients) + 1:03d}"
+        pat_id = f"PAT-{uuid.uuid4().hex[:5].upper()}"
         in_patient = IncomingPatient(
             id=pat_id,
             incident_id=inc.id,
@@ -359,6 +394,7 @@ def assign_resource(req: CreateAssignmentRequest):
             patient_condition="Trauma / Hypothermia (Stable)" if inc.type != "Medical Emergency" else "Acute Respiratory Distress (Critical)"
         )
         db.incoming_patients[pat_id] = in_patient
+        created_referral = in_patient
 
     db.log_event("ASSIGNMENT_DISPATCHED", f"Dispatched unit {res.name} to incident {inc.id}. Estimated distance: {dist} km.", assign_id)
 
@@ -374,11 +410,11 @@ def assign_resource(req: CreateAssignmentRequest):
                     id=assign_id,
                     incident_id=req.incident_id,
                     resource_id=req.resource_id,
-                    route_geometry=coords,
+                    route_geometry=json.dumps(coords) if coords else None,
                     route_distance_km=dist,
                     assignment_status="Dispatched",
                     explanation=explanation,
-                    created_at=assignment.created_at,
+                    assigned_at=assignment.assigned_at,
                     updated_at=assignment.updated_at
                 ))
             db_res = session.query(ResourceModel).filter(ResourceModel.id == req.resource_id).first()
@@ -388,6 +424,19 @@ def assign_resource(req: CreateAssignmentRequest):
             db_inc = session.query(IncidentModel).filter(IncidentModel.id == req.incident_id).first()
             if db_inc:
                 db_inc.status = "Assigned"
+        if created_referral:
+            from app.domain.models import MedicalReferralRecord
+            db_store.insert_referral(MedicalReferralRecord(
+                id=created_referral.id,
+                incident_id=created_referral.incident_id,
+                hospital_id=created_referral.hospital_id,
+                resource_id=created_referral.resource_id,
+                estimated_arrival_minutes=created_referral.estimated_arrival_minutes,
+                estimated_patient_count=created_referral.estimated_patient_count,
+                patient_condition=created_referral.patient_condition,
+                severity=created_referral.severity,
+                status=created_referral.status
+            ))
     except Exception as e:
         print(f"Warning: Assignment persist failed: {e}")
 
@@ -634,9 +683,9 @@ def submit_field_report(req: CreateFieldReportRequest):
     msg = f"FIELD REPORT [{res_name}]: {req.assessment}. Casualties: {req.casualties}. Condition: {req.road_condition or 'Passable'}. {req.notes or ''}"
     db.log_event("FIELD_REPORT", msg, req.incident_id)
 
-    # Persist in SQLite
+    # Persist in Supabase PostgreSQL
     try:
-        from app.db.sqlite_store import db_store
+        from app.db.postgres_store import db_store
         from app.domain.models import IncidentReport
         from app.domain.enums import IncidentType, ReportSource, VerificationStatus
         import uuid
@@ -658,7 +707,7 @@ def submit_field_report(req: CreateFieldReportRequest):
         )
         db_store.insert_report(report)
     except Exception as e:
-        print(f"Warning: Field report SQLite persist failed: {e}")
+        print(f"Warning: Field report PG persist failed: {e}")
 
     return {"status": "received", "incident_id": req.incident_id, "message": msg}
 
@@ -702,7 +751,8 @@ def list_referrals(hospital_id: Optional[str] = None):
 
 @app.post("/api/referrals")
 def create_referral(req: CreateReferralRequest):
-    ref_id = f"CASE-{len(db.incoming_patients) + 101}"
+    import uuid
+    ref_id = f"CASE-{uuid.uuid4().hex[:5].upper()}"
     patient = IncomingPatient(
         id=ref_id,
         incident_id=req.incident_id,
@@ -724,9 +774,9 @@ def create_referral(req: CreateReferralRequest):
         ref_id
     )
 
-    # Persist into SQLite
+    # Persist into Supabase PostgreSQL
     try:
-        from app.db.sqlite_store import db_store
+        from app.db.postgres_store import db_store
         from app.domain.models import MedicalReferralRecord, IncidentEvent, IncidentActor, utc_now_iso
         from app.domain.enums import EventType, ActorRole
         rec = MedicalReferralRecord(
@@ -743,6 +793,7 @@ def create_referral(req: CreateReferralRequest):
         )
         db_store.insert_referral(rec)
         db_store.record_event(IncidentEvent(
+            id=f"EVT-{uuid.uuid4().hex[:8].upper()}",
             event_type=EventType.HOSPITAL_REFERRAL_CREATED,
             entity_id=req.incident_id,
             actor=IncidentActor(id=req.resource_id, name="Field Unit", role=ActorRole.RESCUER),
@@ -752,7 +803,7 @@ def create_referral(req: CreateReferralRequest):
             context={"referral_id": ref_id, "hospital_id": req.hospital_id, "patients": req.estimated_patient_count}
         ))
     except Exception as e:
-        print(f"Warning: Medical referral SQLite persist failed: {e}")
+        print(f"Warning: Medical referral PG persist failed: {e}")
 
     return patient
 
@@ -773,8 +824,13 @@ def update_referral(referral_id: str, req: UpdateReferralRequest):
         if hosp:
             hosp.available_beds = max(0, hosp.available_beds - ref.estimated_patient_count)
             try:
-                from app.db.postgres_store import db_store as pg_store
-                pg_store.update_hospital_capacity(hosp.id, {"available_beds": hosp.available_beds})
+                from app.db.session import get_db_session
+                from app.db.models_sql import HospitalModel
+                with get_db_session() as session:
+                    db_hosp = session.query(HospitalModel).filter(HospitalModel.id == hosp.id).first()
+                    if db_hosp:
+                        db_hosp.available_beds = hosp.available_beds
+                        db_hosp.updated_at = datetime.utcnow().isoformat()
             except Exception as e:
                 print(f"Warning: Hospital capacity persist on referral failed: {e}")
             db.log_event(
@@ -789,9 +845,9 @@ def update_referral(referral_id: str, req: UpdateReferralRequest):
             referral_id
         )
 
-    # Persist update in SQLite
+    # Persist update in Supabase PostgreSQL
     try:
-        from app.db.sqlite_store import db_store
+        from app.db.postgres_store import db_store
         from app.domain.models import IncidentEvent, IncidentActor, utc_now_iso
         from app.domain.enums import EventType, ActorRole
         persisted = db_store.get_referral(referral_id)
@@ -806,6 +862,7 @@ def update_referral(referral_id: str, req: UpdateReferralRequest):
                 EventType.HOSPITAL_REFERRAL_DECLINED if req.status == "Declined" else EventType.STATUS_TRANSITION
             )
             db_store.record_event(IncidentEvent(
+                id=f"EVT-{uuid.uuid4().hex[:8].upper()}",
                 event_type=event_type,
                 entity_id=ref.incident_id,
                 actor=IncidentActor(id=ref.hospital_id, name="Hospital Desk", role=ActorRole.HOSPITAL_OPERATOR),
@@ -815,7 +872,7 @@ def update_referral(referral_id: str, req: UpdateReferralRequest):
                 context={"referral_id": referral_id}
             ))
     except Exception as e:
-        print(f"Warning: Medical referral update SQLite persist failed: {e}")
+        print(f"Warning: Medical referral update PG persist failed: {e}")
 
     return ref
 
@@ -967,6 +1024,43 @@ def create_field_alert(req: CreateFieldAlertRequest):
         source=f"Rescuer Field Alert ({req.rescuer_name})"
     )
     db.incidents[new_inc_id] = new_inc
+
+    # Persist newly discovered secondary incident into PostgreSQL incidents table
+    try:
+        from app.domain.models import IncidentRecord
+        from app.domain.enums import IncidentType, IncidentCategory, IncidentStatus, VerificationStatus, PriorityLevel, ReportSource
+        type_enum = IncidentType.OTHER
+        for it in IncidentType:
+            if it.value.lower() == req.emergency_type.lower() or it.name.lower() == req.emergency_type.lower():
+                type_enum = it
+                break
+        prio_enum = PriorityLevel.HIGH
+        for p in PriorityLevel:
+            if p.value.lower() == level.lower():
+                prio_enum = p
+                break
+        db_store.insert_incident(IncidentRecord(
+            id=new_inc_id,
+            type=type_enum,
+            category=IncidentCategory.PUBLIC_SAFETY,
+            severity=new_inc.severity,
+            urgency=new_inc.urgency,
+            confidence=1.0,
+            priority_score=min(5.0, max(0.0, score)),
+            priority_level=prio_enum,
+            status=IncidentStatus.ACTIVE,
+            verification_status=VerificationStatus.VERIFIED,
+            latitude=lat,
+            longitude=lon,
+            location_description=req.location_description or "Field discovery",
+            source=ReportSource.RESCUER_FIELD,
+            people_affected=req.people_affected,
+            casualties=req.casualties,
+            description=new_inc.description,
+            required_capabilities=[]
+        ))
+    except Exception as e:
+        print(f"Warning: Field-discovered incident PG persist failed: {e}")
 
     alert_dict = {
         "id": alert_id,

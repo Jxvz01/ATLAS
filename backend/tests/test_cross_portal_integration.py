@@ -15,7 +15,7 @@ import json
 
 from app.main import app
 from app.database import db
-from app.db.sqlite_store import db_store
+from app.db.postgres_store import db_store
 
 client = TestClient(app)
 

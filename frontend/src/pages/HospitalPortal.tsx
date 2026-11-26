@@ -1,21 +1,21 @@
 import React, { useState } from 'react';
-import { 
-  Building2, 
-  Bed, 
-  Users, 
-  Activity, 
-  Clock, 
-  ArrowRight, 
-  LogOut, 
-  SlidersHorizontal, 
-  PieChart, 
-  Settings, 
-  Ambulance, 
-  CheckCircle2, 
-  Share2, 
-  AlertTriangle, 
-  RefreshCw, 
-  ChevronRight, 
+import {
+  Building2,
+  Bed,
+  Users,
+  Activity,
+  Clock,
+  ArrowRight,
+  LogOut,
+  SlidersHorizontal,
+  PieChart,
+  Settings,
+  Ambulance,
+  CheckCircle2,
+  Share2,
+  AlertTriangle,
+  RefreshCw,
+  ChevronRight,
   Info,
   ShieldCheck,
   Check,
@@ -56,48 +56,8 @@ export const HospitalPortal: React.FC = () => {
   const occupiedBeds = Math.max(0, totalBeds - availBeds);
   const occupancyPct = Math.round((occupiedBeds / totalBeds) * 100);
 
-  // Derive incoming patients / cases
-  // If backend state has incoming_patients, map them; otherwise use live incidents that require hospital transport
-  const rawIncoming = state?.incoming_patients && state.incoming_patients.length > 0
-    ? state.incoming_patients
-    : [
-        {
-          id: 'CASE-104',
-          incident_id: 'INC-104',
-          hospital_id: 'HOSP-01',
-          resource_id: 'R-04',
-          estimated_arrival_minutes: 7,
-          estimated_patient_count: 2,
-          severity: 'Critical',
-          patient_condition: 'Severe flood-related hypothermia & blunt trauma injuries',
-          treatment_required: 'Trauma resuscitation, warming blanket, high-flow O2',
-          status: 'En Route'
-        },
-        {
-          id: 'CASE-107',
-          incident_id: 'INC-107',
-          hospital_id: 'HOSP-01',
-          resource_id: 'AMB-02',
-          estimated_arrival_minutes: 14,
-          estimated_patient_count: 1,
-          severity: 'Urgent',
-          patient_condition: 'Acute respiratory distress following water inhalation',
-          treatment_required: 'Emergency nebulization, intensive airway support',
-          status: 'En Route'
-        },
-        {
-          id: 'CASE-108',
-          incident_id: 'INC-108',
-          hospital_id: 'HOSP-01',
-          resource_id: 'R-01',
-          estimated_arrival_minutes: 18,
-          estimated_patient_count: 3,
-          severity: 'Standard',
-          patient_condition: 'Lacerations, compound soft-tissue contusions',
-          treatment_required: 'Wound irrigation, orthopaedic splinting',
-          status: 'En Route'
-        }
-      ];
+  // Derive incoming patients / cases strictly from authoritative backend state
+  const rawIncoming = state?.incoming_patients || [];
 
   // Sort incoming cases by estimated arrival time and severity urgency
   const incomingCases = [...rawIncoming].sort((a: any, b: any) => {
@@ -146,28 +106,28 @@ export const HospitalPortal: React.FC = () => {
   };
 
   // Live Activity Logs from backend
-  const activityLogs = state?.activity_logs && state.activity_logs.length > 0 
-    ? state.activity_logs.slice(-4).reverse() 
+  const activityLogs = state?.activity_logs && state.activity_logs.length > 0
+    ? state.activity_logs.slice(-4).reverse()
     : [
-        {
-          id: 'LOG-01',
-          event_type: 'REFERRAL_RECEIVED',
-          message: 'Referral dispatched for INC-104 via R-04 (2 patients, ETA 7 min)',
-          created_at: 'Just now'
-        },
-        {
-          id: 'LOG-02',
-          event_type: 'CAPACITY_SYNC',
-          message: 'SEOC confirmed K.R. Hospital status as Primary Operational Facility',
-          created_at: '4 min ago'
-        },
-        {
-          id: 'LOG-03',
-          event_type: 'TRIAGE_ADVISORY',
-          message: 'Trauma Care unit alerted for flood evacuation intake',
-          created_at: '12 min ago'
-        }
-      ];
+      {
+        id: 'LOG-01',
+        event_type: 'REFERRAL_RECEIVED',
+        message: 'Referral dispatched for INC-104 via R-04 (2 patients, ETA 7 min)',
+        created_at: 'Just now'
+      },
+      {
+        id: 'LOG-02',
+        event_type: 'CAPACITY_SYNC',
+        message: 'SEOC confirmed K.R. Hospital status as Primary Operational Facility',
+        created_at: '4 min ago'
+      },
+      {
+        id: 'LOG-03',
+        event_type: 'TRIAGE_ADVISORY',
+        message: 'Trauma Care unit alerted for flood evacuation intake',
+        created_at: '12 min ago'
+      }
+    ];
 
   // Ward capacities
   const wards = [
@@ -179,7 +139,7 @@ export const HospitalPortal: React.FC = () => {
 
   return (
     <div className="w-screen h-screen flex bg-[#F8FAFC] text-[#0F172A] overflow-hidden select-none font-sans">
-      
+
       {/* 1. LEFT SIDEBAR */}
       <aside className="w-[230px] h-full bg-white border-r border-[#E2E8F0] flex flex-col justify-between shrink-0 z-20 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div>
@@ -204,11 +164,10 @@ export const HospitalPortal: React.FC = () => {
           <nav className="p-2 space-y-0.5 text-xs font-medium">
             <button
               onClick={() => setActiveNav('Overview')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
-                activeNav === 'Overview'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${activeNav === 'Overview'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <Building2 className={`w-4 h-4 ${activeNav === 'Overview' ? 'text-[#F26536]' : 'text-[#64748B]'}`} />
               <span>Overview</span>
@@ -216,11 +175,10 @@ export const HospitalPortal: React.FC = () => {
 
             <button
               onClick={() => setActiveNav('Incoming Cases')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition ${
-                activeNav === 'Incoming Cases'
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg transition ${activeNav === 'Incoming Cases'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 <Ambulance className="w-4 h-4 text-[#64748B]" />
@@ -233,11 +191,10 @@ export const HospitalPortal: React.FC = () => {
 
             <button
               onClick={() => setActiveNav('Ward & Capacity')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
-                activeNav === 'Ward & Capacity'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${activeNav === 'Ward & Capacity'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <SlidersHorizontal className="w-4 h-4 text-[#64748B]" />
               <span>Ward & Capacity</span>
@@ -245,11 +202,10 @@ export const HospitalPortal: React.FC = () => {
 
             <button
               onClick={() => setActiveNav('Resources')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
-                activeNav === 'Resources'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${activeNav === 'Resources'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <Users className="w-4 h-4 text-[#64748B]" />
               <span>Resources</span>
@@ -257,11 +213,10 @@ export const HospitalPortal: React.FC = () => {
 
             <button
               onClick={() => setActiveNav('Referrals')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
-                activeNav === 'Referrals'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${activeNav === 'Referrals'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <Share2 className="w-4 h-4 text-[#64748B]" />
               <span>Referrals</span>
@@ -269,11 +224,10 @@ export const HospitalPortal: React.FC = () => {
 
             <button
               onClick={() => setActiveNav('Reports')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
-                activeNav === 'Reports'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${activeNav === 'Reports'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <PieChart className="w-4 h-4 text-[#64748B]" />
               <span>Reports</span>
@@ -281,11 +235,10 @@ export const HospitalPortal: React.FC = () => {
 
             <button
               onClick={() => setActiveNav('Settings')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${
-                activeNav === 'Settings'
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition ${activeNav === 'Settings'
                   ? 'bg-[#F26536]/10 text-[#F26536] font-semibold'
                   : 'text-[#475569] hover:bg-[#F1F5F9] hover:text-[#0F172A]'
-              }`}
+                }`}
             >
               <Settings className="w-4 h-4 text-[#64748B]" />
               <span>Settings</span>
@@ -319,7 +272,7 @@ export const HospitalPortal: React.FC = () => {
 
       {/* 2. MAIN HOSPITAL CONTENT AREA */}
       <main className="flex-1 flex flex-col overflow-y-auto">
-        
+
         {/* REFINED HEADER: Facility Identity & Operational Status */}
         <header className="bg-white border-b border-[#E2E8F0] px-6 py-3.5 flex items-center justify-between shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <div className="flex items-center gap-3.5">
@@ -343,9 +296,8 @@ export const HospitalPortal: React.FC = () => {
 
           <div className="flex items-center gap-4">
             {/* Last sync timestamp */}
-            <div className={`hidden md:flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded border ${
-              isOffline ? 'bg-red-50 text-red-700 border-red-200' : 'bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]'
-            }`}>
+            <div className={`hidden md:flex items-center gap-1.5 text-[11px] font-mono px-2 py-0.5 rounded border ${isOffline ? 'bg-red-50 text-red-700 border-red-200' : 'bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]'
+              }`}>
               <RefreshCw className={`w-3 h-3 ${isOffline ? 'text-red-500' : 'text-[#16A34A]'}`} />
               <span>{isOffline ? 'Degraded • Retrying' : `Synced${syncLatencyMs ? ` (${syncLatencyMs}ms)` : ''}`}</span>
             </div>
@@ -375,10 +327,10 @@ export const HospitalPortal: React.FC = () => {
         )}
 
         <div className="p-6 space-y-6 max-w-7xl w-full">
-          
+
           {/* 2. KPI STRIP (Derived from backend state) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            
+
             {/* 1. Total Beds */}
             <div className="bg-white border border-[#E2E8F0] rounded-xl p-3.5 flex items-center gap-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
               <div className="w-10 h-10 rounded-lg bg-[#E0F2FE] text-[#0284C7] flex items-center justify-center shrink-0">
@@ -451,7 +403,7 @@ export const HospitalPortal: React.FC = () => {
 
           {/* TWO-COLUMN LAYOUT: Incoming Cases (Left) | Capacity & Adjustments (Right) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-            
+
             {/* 3. INCOMING CASES (PRIMARY SECTION - 7 cols) */}
             <div className="lg:col-span-7 bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-[#E2E8F0]">
@@ -468,11 +420,10 @@ export const HospitalPortal: React.FC = () => {
                     <button
                       key={tab}
                       onClick={() => setReferralFilter(tab)}
-                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${
-                        referralFilter === tab
+                      className={`px-2 py-0.5 rounded text-[10px] font-semibold transition ${referralFilter === tab
                           ? 'bg-[#0F172A] text-white'
                           : 'bg-[#F1F5F9] text-[#64748B] hover:text-[#0F172A]'
-                      }`}
+                        }`}
                     >
                       {tab}
                     </button>
@@ -490,86 +441,85 @@ export const HospitalPortal: React.FC = () => {
                     return c.status === 'Declined';
                   })
                   .map((c: any) => {
-                  const isCritical = c.severity === 'Critical' || c.severity === 'High';
-                  return (
-                    <div
-                      key={c.id || c.incident_id}
-                      className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/70 hover:bg-[#F8FAFC] transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      {/* Left: Case Info */}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-[#0F172A] font-mono">
-                            {c.incident_id}
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                              isCritical
-                                ? 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'
-                                : 'bg-[#FEF3C7] text-[#D97706] border-[#FDE68A]'
-                            }`}
-                          >
-                            {c.severity || 'Moderate'}
-                          </span>
-                          <span className="text-[11px] text-[#64748B] font-mono">
-                            via {c.resource_id}
-                          </span>
-                        </div>
-
-                        <div className="text-xs font-semibold text-[#0F172A] flex items-center gap-2">
-                          <span className="text-[#F26536] font-bold font-mono">
-                            ETA {c.estimated_arrival_minutes} min
-                          </span>
-                          <span className="text-[#94A3B8]">•</span>
-                          <span>{c.estimated_patient_count} patient(s)</span>
-                        </div>
-
-                        <p className="text-[11px] text-[#64748B] leading-snug">
-                          {c.patient_condition}
-                        </p>
-
-                        {c.treatment_required && (
-                          <div className="text-[10px] text-[#0284C7] font-medium pt-0.5 flex items-center gap-1">
-                            <span className="font-bold">Required:</span> {c.treatment_required}
+                    const isCritical = c.severity === 'Critical' || c.severity === 'High';
+                    return (
+                      <div
+                        key={c.id || c.incident_id}
+                        className="p-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC]/70 hover:bg-[#F8FAFC] transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      >
+                        {/* Left: Case Info */}
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-[#0F172A] font-mono">
+                              {c.incident_id}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${isCritical
+                                  ? 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'
+                                  : 'bg-[#FEF3C7] text-[#D97706] border-[#FDE68A]'
+                                }`}
+                            >
+                              {c.severity || 'Moderate'}
+                            </span>
+                            <span className="text-[11px] text-[#64748B] font-mono">
+                              via {c.resource_id}
+                            </span>
                           </div>
-                        )}
-                      </div>
 
-                      {/* Right: Actions */}
-                      <div className="flex sm:flex-col items-center sm:items-end justify-end gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E2E8F0]">
-                        {c.status === 'Accepted' || c.status === 'Admitted' ? (
-                          <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>{c.status}</span>
-                          </span>
-                        ) : c.status === 'Declined' ? (
-                          <span className="px-3 py-1 rounded-lg bg-red-100 text-red-700 border border-red-200 text-xs font-bold">
-                            Declined
-                          </span>
-                        ) : (
+                          <div className="text-xs font-semibold text-[#0F172A] flex items-center gap-2">
+                            <span className="text-[#F26536] font-bold font-mono">
+                              ETA {c.estimated_arrival_minutes} min
+                            </span>
+                            <span className="text-[#94A3B8]">•</span>
+                            <span>{c.estimated_patient_count} patient(s)</span>
+                          </div>
+
+                          <p className="text-[11px] text-[#64748B] leading-snug">
+                            {c.patient_condition}
+                          </p>
+
+                          {c.treatment_required && (
+                            <div className="text-[10px] text-[#0284C7] font-medium pt-0.5 flex items-center gap-1">
+                              <span className="font-bold">Required:</span> {c.treatment_required}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Right: Actions */}
+                        <div className="flex sm:flex-col items-center sm:items-end justify-end gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E2E8F0]">
+                          {c.status === 'Accepted' || c.status === 'Admitted' ? (
+                            <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{c.status}</span>
+                            </span>
+                          ) : c.status === 'Declined' ? (
+                            <span className="px-3 py-1 rounded-lg bg-red-100 text-red-700 border border-red-200 text-xs font-bold">
+                              Declined
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleAcceptCase(c)}
+                              className="px-3.5 py-1.5 rounded-lg bg-[#F26536] hover:bg-[#E05322] active:scale-98 text-white text-xs font-semibold shadow-xs transition"
+                            >
+                              Accept
+                            </button>
+                          )}
                           <button
-                            onClick={() => handleAcceptCase(c)}
-                            className="px-3.5 py-1.5 rounded-lg bg-[#F26536] hover:bg-[#E05322] active:scale-98 text-white text-xs font-semibold shadow-xs transition"
+                            onClick={() => setSelectedCaseModal(c)}
+                            className="px-2.5 py-1 text-[11px] text-[#64748B] hover:text-[#0F172A] hover:bg-white rounded transition font-medium"
                           >
-                            Accept
+                            Review Details
                           </button>
-                        )}
-                        <button
-                          onClick={() => setSelectedCaseModal(c)}
-                          className="px-2.5 py-1 text-[11px] text-[#64748B] hover:text-[#0F172A] hover:bg-white rounded transition font-medium"
-                        >
-                          Review Details
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
 
             {/* 4. CAPACITY OVERVIEW & QUICK BED ADJUST (5 cols) */}
             <div className="lg:col-span-5 space-y-5">
-              
+
               {/* CAPACITY OVERVIEW CARD */}
               <div className="bg-white border border-[#E2E8F0] rounded-xl p-5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] space-y-4">
                 <div className="pb-3 border-b border-[#E2E8F0] flex items-center justify-between">
@@ -597,13 +547,12 @@ export const HospitalPortal: React.FC = () => {
                             {ward.occupied} / {ward.total} ({ward.pct}%)
                           </span>
                         </div>
-                        
+
                         {/* Progress track */}
                         <div className="w-full h-2 rounded-full bg-[#F1F5F9] overflow-hidden border border-[#E2E8F0]">
                           <div
-                            className={`h-full rounded-full transition-all duration-300 ${
-                              isNearFull ? 'bg-[#DC2626]' : 'bg-[#F26536]'
-                            }`}
+                            className={`h-full rounded-full transition-all duration-300 ${isNearFull ? 'bg-[#DC2626]' : 'bg-[#F26536]'
+                              }`}
                             style={{ width: `${ward.pct}%` }}
                           />
                         </div>

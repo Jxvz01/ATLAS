@@ -57,7 +57,9 @@ export const CitizenApp: React.FC = () => {
   // Active / Submitted incident tracking
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [activeIncidentId, setActiveIncidentId] = useState<string>('INC-1043');
+  const [activeIncidentId, setActiveIncidentId] = useState<string>(
+    () => localStorage.getItem('atlas_citizen_last_inc') || 'INC-101'
+  );
   const [activeTrackingData, setActiveTrackingData] = useState<{
     id: string;
     type: string;
@@ -67,16 +69,16 @@ export const CitizenApp: React.FC = () => {
     status: 'Request Received' | 'Rescue Team Assigned' | 'En Route' | 'On Site' | 'Resolved';
     timeline: { step: string; time: string; done: boolean; active?: boolean }[];
   }>({
-    id: 'INC-1043',
-    type: 'Flooding',
-    location: 'Vijayanagar, Mysuru',
-    eta: '~ 7 min',
-    team: 'R-04 (Water Rescue)',
-    status: 'En Route',
+    id: localStorage.getItem('atlas_citizen_last_inc') || 'INC-101',
+    type: 'Emergency SOS',
+    location: 'Mysuru',
+    eta: 'Pending Dispatch',
+    team: 'Awaiting Assignment',
+    status: 'Request Received',
     timeline: [
-      { step: 'Request Received', time: '18:01', done: true },
-      { step: 'Rescue Team Assigned', time: '18:03', done: true },
-      { step: 'En Route', time: '18:05', done: true, active: true },
+      { step: 'Request Received', time: 'Live', done: true, active: true },
+      { step: 'Rescue Team Assigned', time: '--', done: false },
+      { step: 'En Route', time: '--', done: false },
       { step: 'On Site', time: '--', done: false }
     ]
   });
@@ -85,17 +87,44 @@ export const CitizenApp: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
 
-  // Sync with live backend incident if matching
+  // Sync with live backend incident & assignment from PostgreSQL
   useEffect(() => {
     if (state?.incidents && activeIncidentId) {
       const match = state.incidents.find(i => i.id === activeIncidentId);
       if (match) {
-        setActiveTrackingData(prev => ({
-          ...prev,
-          type: match.type || prev.type,
-          location: 'Vijayanagar, Mysuru',
-          status: (match.status === 'Assigned' || match.status === 'In Progress') ? 'En Route' : 'Request Received'
-        }));
+        const asg = (state.assignments || []).find(
+          a => a.incident_id === match.id && a.assignment_status !== 'Canceled'
+        );
+        const asgStatus = asg?.assignment_status || '';
+        const isResolved = match.status === 'Resolved' || asgStatus === 'Completed';
+        const isOnSite = asgStatus === 'On Scene';
+        const isEnRoute = asgStatus === 'En Route' || match.status === 'In Progress';
+        const isAssigned = Boolean(asg) || match.status === 'Assigned';
+
+        const mappedStatus: 'Request Received' | 'Rescue Team Assigned' | 'En Route' | 'On Site' | 'Resolved' =
+          isResolved ? 'Resolved' :
+          isOnSite ? 'On Site' :
+          isEnRoute ? 'En Route' :
+          isAssigned ? 'Rescue Team Assigned' : 'Request Received';
+
+        const etaStr = asg?.route_distance_km
+          ? `~ ${Math.max(3, Math.round(asg.route_distance_km * 3))} min`
+          : (isAssigned ? 'Dispatched' : 'Pending Dispatch');
+
+        setActiveTrackingData({
+          id: match.id,
+          type: match.type,
+          location: `${match.latitude.toFixed(4)}, ${match.longitude.toFixed(4)}`,
+          eta: etaStr,
+          team: asg ? `Unit ${asg.resource_id}` : 'Awaiting Assignment',
+          status: mappedStatus,
+          timeline: [
+            { step: 'Request Received', time: 'Confirmed', done: true, active: !isAssigned },
+            { step: 'Rescue Team Assigned', time: asg ? asg.resource_id : '--', done: isAssigned, active: isAssigned && !isEnRoute && !isOnSite && !isResolved },
+            { step: 'En Route', time: isEnRoute || isOnSite || isResolved ? 'Active' : '--', done: isEnRoute || isOnSite || isResolved, active: isEnRoute },
+            { step: 'On Site', time: isOnSite || isResolved ? 'Arrived' : '--', done: isOnSite || isResolved, active: isOnSite || isResolved }
+          ]
+        });
       }
     }
   }, [state, activeIncidentId]);
@@ -134,6 +163,7 @@ export const CitizenApp: React.FC = () => {
       }
 
       const newId = res.id;
+      localStorage.setItem('atlas_citizen_last_inc', newId);
       setActiveIncidentId(newId);
       setActiveTrackingData({
         id: newId,

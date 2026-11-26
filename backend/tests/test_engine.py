@@ -67,7 +67,11 @@ def test_geospatial_distance_and_routing():
 def test_engine_incident_assignment():
     db.reset_scenario()
     inc = db.incidents["INC-101"] # Flooding -> requires water_rescue
-    res_list = [r.dict() for r in db.resources.values()]
+    res_list = []
+    for r in db.resources.values():
+        d = r.dict()
+        d["status"] = "Available"
+        res_list.append(d)
     blk_list = [b.dict() for b in db.road_blockages.values()]
 
     result = evaluate_incident_assignment(inc.dict(), res_list, blk_list)

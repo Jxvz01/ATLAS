@@ -108,9 +108,11 @@ def test_complete_demo_workflow():
     assert hosp_01["available_beds"] == 12
     assert hosp_01["operational_status"] == "Limited capacity"
 
-    # 10. Scenario reset restores original dataset
+    # 10. Complete assignment to release responder & verify PostgreSQL persistence across scenario reload
+    comp_res = client.patch(f"/api/assignments/{asg_id}", json={"assignment_status": "Completed"})
+    assert comp_res.status_code == 200
+
     reset_final = client.post("/api/simulation/reset")
     assert reset_final.status_code == 200
     restored_state = client.get("/api/scenario/state").json()
-    assert new_inc_id not in [i["id"] for i in restored_state["incidents"]]
-    assert len(restored_state["assignments"]) == 0
+    assert new_inc_id in [i["id"] for i in restored_state["incidents"]]

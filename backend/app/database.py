@@ -178,90 +178,113 @@ class StateStore:
         self.hazards = copy.deepcopy(self.seed_raw.get("hazards", []))
 
         # Initial log
-        self.log_event("SYSTEM_RESET", "Operational scenario reset to baseline state (Mysuru Flood Scenario).")
-        
-        # Hydrate from SQLite Persistent Operational Store (excluding non-seed transient testing incidents)
-        self.sync_from_sqlite(exclude_non_seed=True, seed_ids=seed_incident_ids)
+        self.log_event("SYSTEM_RESET", "Operational scenario initialized.")
 
-    def sync_from_sqlite(self, exclude_non_seed: bool = False, seed_ids: set = None):
-        """Loads and syncs persistent incidents from SQLiteOperationalStore into operational StateStore."""
+        # Hydrate authoritative state from Supabase PostgreSQL
+        self.sync_from_postgres()
+
+    def sync_from_postgres(self):
+        """Loads and syncs authoritative operational records from Supabase PostgreSQL."""
         try:
-            from app.db.sqlite_store import db_store
-            with db_store.get_connection() as conn:
-                rows = conn.execute("SELECT * FROM incidents ORDER BY created_at ASC;").fetchall()
-                for r in rows:
-                    inc_id = r["id"]
-                    if exclude_non_seed and seed_ids and inc_id not in seed_ids:
-                        continue
-                    status_raw = r["status"]
-                    # Map v1 IncidentStatus enum to UI friendly status
-                    ui_status = "Active"
-                    if status_raw in ["RESOLVED", "CLOSED"]:
+            from app.db.session import get_db_session
+            from app.db.models_sql import (
+                IncidentModel, ResourceModel, HospitalModel, AssignmentModel,
+                RoadBlockageModel, ShelterModel, MedicalReferralModel, IncidentEventModel
+            )
+            with get_db_session() as session:
+                # 1. Hospitals
+                for h in session.query(HospitalModel).all():
+                    self.hospitals[h.id] = Hospital(
+                        id=h.id, name=h.name, latitude=h.latitude, longitude=h.longitude,
+                        total_beds=h.total_beds, available_beds=h.available_beds,
+                        icu_capacity=h.icu_capacity, emergency_capacity=h.emergency_capacity,
+                        available_medical_personnel=h.available_medical_personnel,
+                        operational_status=h.operational_status, updated_at=h.updated_at
+                    )
+
+                # 2. Resources
+                for r in session.query(ResourceModel).all():
+                    self.resources[r.id] = Resource(
+                        id=r.id, name=r.name, type=r.type, latitude=r.latitude, longitude=r.longitude,
+                        capabilities=json.loads(r.capabilities or "[]"),
+                        status=r.status, capacity=r.capacity,
+                        current_assignment_id=r.current_assignment_id, updated_at=r.updated_at
+                    )
+
+                # 3. Incidents
+                for inc in session.query(IncidentModel).order_by(IncidentModel.created_at.asc()).all():
+                    status_raw = inc.status
+                    ui_status = status_raw
+                    if status_raw in ["RESOLVED", "CLOSED", "Resolved"]:
                         ui_status = "Resolved"
-                    elif status_raw in ["ACTIVE", "VERIFIED", "UNDER_REVIEW", "RECEIVED"]:
+                    elif status_raw in ["ACTIVE", "VERIFIED", "UNDER_REVIEW", "RECEIVED", "Active"]:
                         ui_status = "Active"
-                    elif status_raw in ["RESPONSE_IN_PROGRESS", "ON_SCENE"]:
+                    elif status_raw in ["RESPONSE_IN_PROGRESS", "ON_SCENE", "In Progress"]:
                         ui_status = "In Progress"
+                    elif status_raw == "Assigned":
+                        ui_status = "Assigned"
 
-                    self.incidents[inc_id] = Incident(
-                        id=inc_id,
-                        type=r["type"],
-                        description=r["description"],
-                        latitude=r["latitude"],
-                        longitude=r["longitude"],
-                        severity=r["severity"],
-                        urgency=r["urgency"],
-                        confidence=r["confidence"],
-                        affected_population=r["people_affected"],
-                        vulnerability=3,
-                        priority_score=r["priority_score"],
-                        priority_level=r["priority_level"],
-                        status=ui_status,
-                        source=r["source"],
-                        required_capabilities=json.loads(r["required_capabilities"] or "[]"),
-                        created_at=r["created_at"],
-                        updated_at=r["updated_at"]
+                    self.incidents[inc.id] = Incident(
+                        id=inc.id, type=inc.type, description=inc.description,
+                        latitude=inc.latitude, longitude=inc.longitude,
+                        severity=inc.severity, urgency=inc.urgency, confidence=inc.confidence,
+                        affected_population=inc.people_affected, vulnerability=3,
+                        priority_score=inc.priority_score, priority_level=inc.priority_level,
+                        status=ui_status, source=inc.source,
+                        required_capabilities=json.loads(inc.required_capabilities or "[]"),
+                        created_at=inc.created_at, updated_at=inc.updated_at
                     )
 
-                # Sync shelters from SQLite
-                shelter_rows = conn.execute("SELECT * FROM shelters;").fetchall()
-                for s in shelter_rows:
-                    self.shelters[s["id"]] = Shelter(
-                        id=s["id"],
-                        name=s["name"],
-                        latitude=s["latitude"],
-                        longitude=s["longitude"],
-                        address=s["address"],
-                        capacity=s["capacity"],
-                        current_occupancy=s["current_occupancy"],
-                        operational_status=s["operational_status"],
-                        supplies_status=s["supplies_status"],
-                        updated_at=s["updated_at"]
+                # 4. Assignments
+                for a in session.query(AssignmentModel).order_by(AssignmentModel.assigned_at.asc()).all():
+                    parsed_geom = json.loads(a.route_geometry) if isinstance(a.route_geometry, str) and a.route_geometry else a.route_geometry
+                    self.assignments[a.id] = Assignment(
+                        id=a.id, incident_id=a.incident_id, resource_id=a.resource_id,
+                        route_geometry=parsed_geom, route_distance_km=a.route_distance_km,
+                        assignment_status=a.assignment_status, explanation=a.explanation,
+                        assigned_at=a.assigned_at, updated_at=a.updated_at
                     )
-                # Seed default shelters into SQLite if table is empty
-                if not shelter_rows:
-                    for sh in self.shelters.values():
-                        from app.domain.models import ShelterRecord
-                        db_store.insert_shelter(ShelterRecord(**sh.dict()))
 
-                # Sync incoming patients / medical referrals from SQLite
-                ref_rows = conn.execute("SELECT * FROM medical_referrals ORDER BY created_at ASC;").fetchall()
-                for ref in ref_rows:
-                    self.incoming_patients[ref["id"]] = IncomingPatient(
-                        id=ref["id"],
-                        incident_id=ref["incident_id"],
-                        hospital_id=ref["hospital_id"],
-                        resource_id=ref["resource_id"],
-                        estimated_arrival_minutes=ref["estimated_arrival_minutes"],
-                        estimated_patient_count=ref["estimated_patient_count"],
-                        patient_condition=ref["patient_condition"],
-                        severity=ref["severity"],
-                        treatment_required=ref["treatment_required"],
-                        status=ref["status"]
+                # 5. Road Blockages
+                for b in session.query(RoadBlockageModel).all():
+                    self.road_blockages[b.id] = RoadBlockage(
+                        id=b.id, road_id=b.road_id, latitude=b.latitude, longitude=b.longitude,
+                        reason=b.reason, status=b.status, avoid_radius_km=b.avoid_radius_km,
+                        created_at=b.created_at
                     )
+
+                # 6. Shelters
+                for s in session.query(ShelterModel).all():
+                    self.shelters[s.id] = Shelter(
+                        id=s.id, name=s.name, latitude=s.latitude, longitude=s.longitude,
+                        address=s.address, capacity=s.capacity, current_occupancy=s.current_occupancy,
+                        operational_status=s.operational_status, supplies_status=s.supplies_status,
+                        updated_at=s.updated_at
+                    )
+
+                # 7. Medical Referrals (Incoming Patients)
+                for ref in session.query(MedicalReferralModel).order_by(MedicalReferralModel.created_at.asc()).all():
+                    self.incoming_patients[ref.id] = IncomingPatient(
+                        id=ref.id, incident_id=ref.incident_id, hospital_id=ref.hospital_id,
+                        resource_id=ref.resource_id, estimated_arrival_minutes=ref.estimated_arrival_minutes,
+                        estimated_patient_count=ref.estimated_patient_count,
+                        patient_condition=ref.patient_condition, severity=ref.severity,
+                        treatment_required=ref.treatment_required, status=ref.status
+                    )
+
+                # 8. Activity Logs from Incident Events
+                ev_rows = session.query(IncidentEventModel).order_by(IncidentEventModel.timestamp.desc()).limit(50).all()
+                if ev_rows:
+                    self.activity_logs = [
+                        ActivityLog(
+                            id=e.id, event_type=e.event_type,
+                            message=e.reason or f"{e.event_type} on {e.entity_id}",
+                            entity_id=e.entity_id, created_at=e.timestamp
+                        )
+                        for e in ev_rows
+                    ]
         except Exception as e:
-            # Fallback if SQLite store table not ready yet
-            pass
+            print(f"Warning: PostgreSQL hydration failed: {e}")
 
     def log_event(self, event_type: str, message: str, entity_id: Optional[str] = None):
         log_id = f"LOG-{len(self.activity_logs) + 1:04d}"
